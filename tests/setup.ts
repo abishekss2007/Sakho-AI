@@ -5,6 +5,8 @@ import { afterEach, beforeEach, vi } from 'vitest';
 const ENV_KEYS = [
   'GEMINI_API_KEY',
   'GEMINI_MODEL',
+  'GEMINI_TTS_MODEL',
+  'GEMINI_TTS_VOICE',
   'TTS_ENABLED',
   'SOS_MODE',
   'SAKHO_MOCK_PROVIDERS',

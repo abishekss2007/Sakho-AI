@@ -1,12 +1,17 @@
 import { SPEAKING_RATE, type TtsRequest } from '@/lib/api/contracts';
 import { LANGUAGES } from '@/lib/languages';
 import { mockProviders, ttsEnabled } from './config';
+import { geminiConfigured, generateSpeech, type GenerateSpeech } from './gemini';
 import { ApiFailure } from './http';
 
 /**
- * Google Cloud Text-to-Speech adapter. It calls the REST API with an access
- * token from Application Default Credentials (the attached service account on
- * Cloud Run), so no key file or API key is ever handled by the app.
+ * Speech synthesis. Two providers, chosen by configuration:
+ *
+ * - Google Cloud Text-to-Speech when `TTS_ENABLED=true`. Called over REST with
+ *   an Application Default Credentials token (the attached service account on
+ *   Cloud Run), so no key file is handled by the app.
+ * - Otherwise a Gemini speech model, when `GEMINI_API_KEY` is set. It needs no
+ *   cloud project and speaks whatever language the text is written in.
  */
 
 const ENDPOINT = 'https://texttospeech.googleapis.com/v1/text:synthesize';
@@ -15,12 +20,24 @@ export const TTS_TIMEOUT_MS = 10_000;
 export interface TtsDeps {
   getToken?: () => Promise<string | null | undefined>;
   fetchImpl?: typeof fetch;
+  speak?: GenerateSpeech;
+  geminiAvailable?: boolean;
 }
+
+/**
+ * Gemini speech models take delivery instructions in plain words, followed by
+ * the text. The text is user-visible content, so it goes after a fixed prefix.
+ */
+const GEMINI_STYLE: Record<TtsRequest['speed'], string> = {
+  slow: 'Read this aloud slowly, warmly and very clearly',
+  normal: 'Read this aloud warmly and clearly',
+  fast: 'Read this aloud clearly at a brisk pace',
+};
 
 export interface TtsAudio {
   bytes: Uint8Array;
   contentType: string;
-  provider: 'google' | 'mock';
+  provider: 'google' | 'gemini' | 'mock';
 }
 
 let tokenProvider: (() => Promise<string | null | undefined>) | undefined;
@@ -57,7 +74,17 @@ export function silentWav(): Uint8Array {
 
 export async function synthesize(request: TtsRequest, signal: AbortSignal, deps: TtsDeps = {}): Promise<TtsAudio> {
   if (mockProviders()) return { bytes: silentWav(), contentType: 'audio/wav', provider: 'mock' };
-  if (!ttsEnabled()) throw new ApiFailure('provider_unavailable', 'Cloud speech is not enabled.');
+  if (!ttsEnabled()) {
+    if (!(deps.geminiAvailable ?? geminiConfigured())) {
+      throw new ApiFailure('provider_unavailable', 'Speech is not configured.');
+    }
+    const language = LANGUAGES[request.locale].englishName;
+    const audio = await (deps.speak ?? generateSpeech)(
+      `${GEMINI_STYLE[request.speed]}, in ${language}: ${request.text}`,
+      signal,
+    );
+    return { ...audio, provider: 'gemini' };
+  }
 
   let token: string | null | undefined;
   try {

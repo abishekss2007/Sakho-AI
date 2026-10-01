@@ -20,9 +20,9 @@ No login is needed. The guided flow works without the microphone, without AI, an
 |---|---|---|
 | Guided PMMVY questionnaire, result, documents, summary | Implemented | Driven by `POST /api/scheme/check`. Same engine is bundled for offline fallback. |
 | PMMVY rules | **Unverified draft** | Transcribed from the official FAQ on 2026-10-01. Not reviewed by an official. Output is always "early guidance". |
-| AI chat (typed) | Implemented | Real Gemini call when `GEMINI_API_KEY` is set. Verified in this repository only against mocks; see [Testing](#testing). |
+| AI chat (typed) | Implemented | Real Gemini call when `GEMINI_API_KEY` is set. Automated tests use mocks; real replies were spot-checked once in Hindi and Assamese on 2026-10-01. |
 | AI chat (voice in, spoken reply) | Implemented | Needs a browser with speech recognition. Not yet tested on real phones. |
-| Cloud Text-to-Speech with device-voice fallback | Implemented | Per-language voice availability is **unverified**; run `npm run check:providers`. |
+| Spoken replies | Implemented | Gemini speech with only `GEMINI_API_KEY`, or Google Cloud Text-to-Speech with `TTS_ENABLED=true`; device voice as fallback. Gemini speech returned audio for six languages in a spot check; pronunciation quality is unreviewed. |
 | Interpreting spoken/typed questionnaire answers | Implemented | Keyword lists for English, Hindi, Tamil; Gemini for longer replies when configured. |
 | Emergency help | Implemented, **demo by default** | Three numbers verified on official pages. Live dialer links only when `SOS_MODE=live`. |
 | English interface | Implemented | Source language. |
@@ -115,7 +115,9 @@ npm run start
 |---|---|---|---|---|
 | `GEMINI_API_KEY` | Server secret | For real chat | unset | Gemini API key. Without it `/api/chat` returns `503 provider_unavailable`. |
 | `GEMINI_MODEL` | Server | No | `gemini-3.5-flash-lite` | Model name. See [Provider setup](#provider-setup). |
-| `TTS_ENABLED` | Server | No | `false` | `true` enables Cloud Text-to-Speech using Application Default Credentials. |
+| `TTS_ENABLED` | Server | No | `false` | `true` uses Google Cloud Text-to-Speech with Application Default Credentials. Otherwise speech comes from Gemini when `GEMINI_API_KEY` is set. |
+| `GEMINI_TTS_MODEL` | Server | No | `gemini-3.8-flash-lite-tts` | Gemini speech model. |
+| `GEMINI_TTS_VOICE` | Server | No | `Kore` | Prebuilt Gemini voice name. |
 | `SOS_MODE` | Server | No | `demo` | Only the exact value `live` renders real `tel:` links. |
 | `RATE_LIMIT_PER_MINUTE` | Server | No | `12` | Requests per client, per paid endpoint, per minute. |
 | `DAILY_PAID_REQUEST_CAP` | Server | No | `2000` | Total paid-endpoint requests per UTC day before `503 budget_exhausted`. |
@@ -145,7 +147,13 @@ npm run start
 GEMINI_API_KEY=your-key npm run check:providers
 ```
 
+### Speech with only a Gemini key
+
+If `GEMINI_API_KEY` is set and `TTS_ENABLED` is not `true`, `/api/tts` uses a Gemini speech model (`GEMINI_TTS_MODEL`, default `gemini-3.8-flash-lite-tts`, listed on <https://ai.google.dev/gemini-api/docs/speech-generation> on 2026-10-01). No cloud project is needed. The model reads the text in whatever language it is written in, with one prebuilt voice. Speed is requested in words ("slowly", "brisk"), so it is approximate. Expect roughly three seconds before audio starts. Each "Listen" is a paid model request, counted by the same rate limit and daily cap as chat.
+
 ### Google Cloud Text-to-Speech
+
+Use this instead when you deploy on Google Cloud and want exact speaking rates and no API-key dependency for speech.
 
 1. Enable the Cloud Text-to-Speech API in your project.
 2. Local: `gcloud auth application-default login`, then set `TTS_ENABLED=true`. Cloud Run: the attached service account is used automatically. No key file is used anywhere.
@@ -547,7 +555,7 @@ Limitations you must keep in mind:
 | Chat and questionnaire content | Memory only. Erased on reload or with "Erase my chat and answers". Tests assert nothing sensitive reaches `localStorage`, `sessionStorage` or cookies. |
 | Stored on the device | Language, speaking speed, auto-read, introduction-seen. Storage being blocked never breaks the app. |
 | Sent to Gemini | Chat messages (up to the last 12, 6000 characters). Questionnaire replies only when long or not matched by keywords. Google's API terms govern retention on their side. |
-| Sent to Cloud Text-to-Speech | The text being spoken. Responses are `no-store`. |
+| Sent to the speech provider | The text being spoken goes to Gemini speech or Cloud Text-to-Speech, whichever is configured. Responses are `no-store`. |
 | Speech recognition | Performed by the browser's own service (for Chrome, Google's). The microphone is explained the first time "Speak" is pressed. |
 | Server logs | One JSON line per request: request id, route, status, error code, duration. The logging function has no parameter for message text, transcripts, answers, coordinates or IP addresses. Rate-limit keys use a daily-salted hash of the address. |
 | Auto-read | Off by default. A spoken question gets a spoken answer; typed questions are read aloud only if the setting is on. |
@@ -908,8 +916,8 @@ Never demo with `SOS_MODE=live` unless you intend the buttons to open a real dia
 
 - **Rules are an unverified draft.** Four questions cannot determine PMMVY entitlement. Sources may be out of date. No official or domain expert has reviewed them.
 - **Translations are unreviewed.** Hindi and Tamil text was written for this build and has not been checked by fluent speakers. Ten languages have no interface translation.
-- **AI quality is untested with real users and real models.** All automated tests use mocks. No live Gemini call was made while building this repository, and the default model name comes from documentation, not from a successful request.
-- **Speech support is unverified.** Recognition depends on the browser. Cloud voice availability per language was not confirmed. Nothing was tested on a physical phone.
+- **AI quality is barely tested.** All automated tests use mocks. Real Gemini chat and speech were spot-checked once on 2026-10-01 (chat in Hindi and Assamese; speech in six languages returned audio). Nobody fluent has judged the answers or the pronunciation.
+- **Speech support is only partly verified.** Recognition depends on the browser. Google Cloud voice availability per language was not confirmed. Nothing was tested on a physical phone.
 - **Not deployed.** The Cloud Run deployment steps have never run; only the checks and the container smoke test have run on GitHub.
 - **Rate limits are per instance** unless the shared store is configured, and no limit here stops a distributed attacker without an edge layer such as Cloud Armor.
 - **No offline reload.** Without a service worker, reloading while offline fails. Only an already-open page degrades gracefully.

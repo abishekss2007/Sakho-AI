@@ -46,6 +46,14 @@ export function LanguageScreen({
         </h1>
       </div>
 
+      {/* Messages sit above the list so the confirm bar below never grows over it. */}
+      {chosen.ui === 'preview' && (
+        <Notice tone="warning" live={false}>
+          {t('previewNotice')}
+        </Notice>
+      )}
+      {voice.notice && <Notice tone="warning">{t(voice.notice)}</Notice>}
+
       <ul className="grid grid-cols-2 gap-3">
         {LANGUAGE_CODES.map((code) => {
           const language = LANGUAGES[code];
@@ -94,13 +102,7 @@ export function LanguageScreen({
           {': '}
           {t(SUPPORT[chosen.ui].detail)}
         </p>
-        {chosen.ui === 'preview' && (
-          <Notice tone="warning" live={false}>
-            {t('previewNotice')}
-          </Notice>
-        )}
-        {voice.notice && <Notice tone="warning">{t(voice.notice)}</Notice>}
-        <div className="grid grid-cols-1 gap-3 min-[420px]:grid-cols-2">
+        <div className="grid grid-cols-2 gap-3">
           <Button variant="secondary" icon="speaker" onClick={() => void voice.speak(chosen.greeting, choice)}>
             {t('hearGreeting')}
             {': '}

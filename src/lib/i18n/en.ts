@@ -85,7 +85,7 @@ export const en = {
   micNetwork: 'Voice input needs internet. You can type or use the buttons.',
   micFailed: 'Voice input stopped. You can try again, type, or use the buttons.',
   ttsFailed: 'The sound could not be played. The text is shown on the screen.',
-  ttsNoVoice: 'This phone has no voice for this language. The text is shown on the screen.',
+  ttsNoVoice: 'Sound is not available for this language right now. The text is shown on the screen.',
   ttsBlocked: 'Press "Listen" to hear this.',
 
   offlineBanner: 'No internet. Chat and voice need internet. The buttons still work.',

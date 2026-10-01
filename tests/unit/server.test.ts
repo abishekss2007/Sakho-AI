@@ -218,8 +218,26 @@ describe('understanding questionnaire replies', () => {
 describe('text to speech', () => {
   const request = { text: 'வணக்கம்', locale: 'ta' as const, speed: 'slow' as const };
 
-  it('is unavailable unless explicitly enabled', async () => {
+  it('is unavailable when neither cloud speech nor a Gemini key is configured', async () => {
     expect((await failure(synthesize(request, signal()))).code).toBe('provider_unavailable');
+  });
+
+  it('uses Gemini speech when cloud speech is off and a key exists', async () => {
+    const speak = vi.fn().mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), contentType: 'audio/wav' });
+    const audio = await synthesize(request, signal(), { speak, geminiAvailable: true });
+    expect(audio).toMatchObject({ provider: 'gemini', contentType: 'audio/wav' });
+    const prompt = speak.mock.calls[0]?.[0] as string;
+    expect(prompt).toBe('Read this aloud slowly, warmly and very clearly, in Tamil: வணக்கம்');
+  });
+
+  it('prefers cloud speech when it is enabled, and passes Gemini failures through', async () => {
+    const speak = vi.fn().mockRejectedValue(new ApiFailure('provider_timeout', 'slow'));
+    expect((await failure(synthesize(request, signal(), { speak, geminiAvailable: true }))).code).toBe('provider_timeout');
+    process.env.TTS_ENABLED = 'true';
+    const fetchImpl = vi.fn().mockResolvedValue(Response.json({ audioContent: Buffer.from('mp3').toString('base64') }));
+    const audio = await synthesize(request, signal(), { getToken: async () => 't', fetchImpl, speak, geminiAvailable: true });
+    expect(audio.provider).toBe('google');
+    expect(speak).toHaveBeenCalledTimes(1);
   });
 
   it('requests audio by language code with the chosen speed', async () => {

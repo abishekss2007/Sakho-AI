@@ -367,7 +367,7 @@ describe('guided benefits', () => {
     speech.options.voices = [{ lang: 'hi-IN' }];
     await openBenefits(user);
     await user.click(button('Listen again'));
-    await screen.findByText('This phone has no voice for this language. The text is shown on the screen.');
+    await screen.findByText('Sound is not available for this language right now. The text is shown on the screen.');
     expect(speech.ttsRequests[0]?.text).toContain('Are you pregnant now');
   });
 
