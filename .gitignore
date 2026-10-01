@@ -1,0 +1,16 @@
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+next-env.d.ts
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+*.pem
+*service-account*.json
+gcloud-*.json
+.DS_Store
+.claude/

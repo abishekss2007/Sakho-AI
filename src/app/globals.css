@@ -1,0 +1,102 @@
+@import 'tailwindcss';
+
+/*
+ * Sakho AI design tokens. Contrast between the pairs used in the interface is
+ * checked by tests/unit/contrast.test.ts, which reads the values from here.
+ */
+@theme {
+  --color-surface: #fbf7f0;
+  --color-card: #ffffff;
+  --color-ink: #1c2b2d;
+  --color-muted: #47585b;
+  --color-line: #857a6b;
+  --color-line-soft: #e8dfd1;
+  --color-primary: #0b5d5e;
+  --color-primary-bright: #0e7473;
+  --color-primary-strong: #084647;
+  --color-primary-soft: #e1f0ee;
+  --color-accent: #8a4b08;
+  --color-accent-soft: #fdecc8;
+  --color-danger: #b3261e;
+  --color-danger-strong: #8c1d18;
+  --color-danger-soft: #fce8e6;
+
+  --shadow-card: 0 1px 2px rgb(28 43 45 / 0.06), 0 10px 28px rgb(28 43 45 / 0.08);
+  --shadow-float: 0 12px 30px rgb(8 70 71 / 0.24);
+  --shadow-danger: 0 10px 24px rgb(140 29 24 / 0.28);
+
+  /*
+   * System fonts only. Android ships Noto fonts for every script used here,
+   * so nothing is downloaded on slow connections.
+   */
+  --font-sans:
+    'Noto Sans', 'Noto Sans Devanagari', 'Noto Sans Tamil', 'Noto Sans Bengali', 'Noto Sans Telugu',
+    'Noto Sans Gujarati', 'Noto Sans Kannada', 'Noto Sans Malayalam', 'Noto Sans Gurmukhi', 'Noto Sans Oriya',
+    'Noto Nastaliq Urdu', 'Noto Sans Arabic', system-ui, -apple-system, 'Segoe UI', Roboto, 'Nirmala UI', sans-serif;
+}
+
+html {
+  /* 18px base at default browser settings; scales with the user's text size. */
+  font-size: 112.5%;
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  /* Soft teal and amber washes over the warm base: calm depth with nothing to download. */
+  background:
+    radial-gradient(42rem 26rem at 108% -8%, var(--color-primary-soft) 0%, transparent 62%),
+    radial-gradient(34rem 22rem at -18% 28%, var(--color-accent-soft) 0%, transparent 58%),
+    var(--color-surface);
+  background-attachment: fixed;
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  /* Indic scripts have tall stacked glyphs and need generous leading. */
+  line-height: 1.65;
+}
+
+h1,
+h2,
+h3 {
+  line-height: 1.35;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-ink);
+  outline-offset: 3px;
+  box-shadow: 0 0 0 3px var(--color-card);
+}
+
+progress {
+  appearance: none;
+  height: 0.75rem;
+  border: 0;
+  border-radius: 999px;
+  overflow: hidden;
+  background: var(--color-line-soft);
+  accent-color: var(--color-primary);
+}
+progress::-webkit-progress-bar {
+  background: var(--color-line-soft);
+}
+progress::-webkit-progress-value {
+  background: var(--color-primary);
+  border-radius: 999px;
+}
+progress::-moz-progress-bar {
+  background: var(--color-primary);
+}
+
+[hidden] {
+  display: none !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

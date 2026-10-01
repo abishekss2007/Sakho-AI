@@ -1,0 +1,52 @@
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 8
+    groups:
+      # Framework packages are released together and must move together.
+      next-and-react:
+        patterns:
+          - next
+          - eslint-config-next
+          - react
+          - react-dom
+          - '@types/react'
+          - '@types/react-dom'
+      testing:
+        patterns:
+          - vitest
+          - '@vitest/*'
+          - '@testing-library/*'
+          - '@playwright/test'
+          - '@axe-core/playwright'
+          - jsdom
+    ignore:
+      # typescript-eslint supports TypeScript below 6.1 and two lint plugins
+      # support ESLint up to 9. Raise these by hand once the tooling catches up.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major', 'version-update:semver-minor']
+      - dependency-name: eslint
+        update-types: ['version-update:semver-major']
+      # Node types follow the Node.js LTS line used in .nvmrc and the Dockerfile.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    ignore:
+      # Stay on the Node 24 LTS line until .nvmrc and package.json engines change with it.
+      - dependency-name: node
+        update-types: ['version-update:semver-major']

@@ -1,0 +1,169 @@
+name: Deploy
+
+# Deploys to Google Cloud Run from main only.
+#   1. `checks` runs the full CI workflow on this exact commit.
+#   2. `deploy` waits for approval on the protected "production" environment,
+#      builds one image, smoke-tests that image, and deploys it by digest.
+# Pull requests never reach this workflow, so they never receive credentials.
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One production deployment at a time; a running deployment is never cancelled.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  checks:
+    name: Checks
+    uses: ./.github/workflows/ci.yml
+    permissions:
+      contents: read
+
+  deploy:
+    name: Build, verify and deploy
+    needs: checks
+    # Only main, and only once the Google Cloud settings exist.
+    if: github.ref == 'refs/heads/main' && vars.GCP_PROJECT_ID != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment:
+      name: production
+      url: ${{ steps.promote.outputs.url }}
+    permissions:
+      contents: read
+      # Needed only here: exchanges the GitHub token for Google credentials (WIF).
+      id-token: write
+    env:
+      PROJECT_ID: ${{ vars.GCP_PROJECT_ID }}
+      REGION: ${{ vars.GCP_REGION }}
+      REPOSITORY: ${{ vars.GAR_REPOSITORY }}
+      SERVICE: ${{ vars.CLOUD_RUN_SERVICE }}
+      RUNTIME_SERVICE_ACCOUNT: ${{ vars.CLOUD_RUN_RUNTIME_SERVICE_ACCOUNT }}
+      # Anything other than exactly "live" is demo mode.
+      SOS_MODE: ${{ vars.SOS_MODE || 'demo' }}
+      GEMINI_MODEL: ${{ vars.GEMINI_MODEL || 'gemini-3.5-flash-lite' }}
+      GEMINI_SECRET_NAME: ${{ vars.GEMINI_SECRET_NAME || 'sakho-gemini-api-key' }}
+      MAX_INSTANCES: ${{ vars.CLOUD_RUN_MAX_INSTANCES || '3' }}
+      RATE_LIMIT_PER_MINUTE: ${{ vars.RATE_LIMIT_PER_MINUTE || '12' }}
+      DAILY_PAID_REQUEST_CAP: ${{ vars.DAILY_PAID_REQUEST_CAP || '2000' }}
+    steps:
+      - name: Check out the tested commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Authenticate to Google Cloud (Workload Identity Federation)
+        uses: google-github-actions/auth@7c6bc770dae815cd3e89ee6cdf493a5fab2cc093 # v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@aa5489c8933f4cc7a4f7d45035b3b1440c9c10db # v3.0.1
+
+      - name: Build and push the image
+        id: image
+        run: |
+          set -euo pipefail
+          gcloud auth configure-docker "${REGION}-docker.pkg.dev" --quiet
+          IMAGE="${REGION}-docker.pkg.dev/${PROJECT_ID}/${REPOSITORY}/sakho-ai"
+          docker build --tag "${IMAGE}:${GITHUB_SHA}" .
+          docker push "${IMAGE}:${GITHUB_SHA}"
+          DIGEST="$(docker inspect --format '{{index .RepoDigests 0}}' "${IMAGE}:${GITHUB_SHA}")"
+          case "$DIGEST" in
+            *@sha256:*) ;;
+            *) echo "Could not resolve an image digest" >&2; exit 1 ;;
+          esac
+          echo "ref=${DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "Image: ${DIGEST}" >> "$GITHUB_STEP_SUMMARY"
+
+      # The image that was pushed is the image that is tested and then deployed.
+      - name: Smoke test the pushed image by digest
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.ref }}
+        run: bash scripts/smoke.sh "$IMAGE_REF"
+
+      - name: Deploy a new revision without traffic
+        id: revision
+        env:
+          IMAGE_REF: ${{ steps.image.outputs.ref }}
+        run: |
+          set -euo pipefail
+          FLAGS=(
+            --project "$PROJECT_ID"
+            --region "$REGION"
+            --image "$IMAGE_REF"
+            --service-account "$RUNTIME_SERVICE_ACCOUNT"
+            --allow-unauthenticated
+            --port 8080
+            --cpu 1
+            --memory 512Mi
+            --concurrency 40
+            --timeout 60
+            --min-instances 0
+            --max-instances "$MAX_INSTANCES"
+            --set-env-vars "SOS_MODE=${SOS_MODE},TTS_ENABLED=true,GEMINI_MODEL=${GEMINI_MODEL},RATE_LIMIT_PER_MINUTE=${RATE_LIMIT_PER_MINUTE},DAILY_PAID_REQUEST_CAP=${DAILY_PAID_REQUEST_CAP}"
+            --set-secrets "GEMINI_API_KEY=${GEMINI_SECRET_NAME}:latest"
+            --labels "commit=${GITHUB_SHA::12}"
+            --quiet
+          )
+          if gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$REGION" >/dev/null 2>&1; then
+            # Existing service: the new revision gets a private test address and no traffic yet.
+            gcloud run deploy "$SERVICE" "${FLAGS[@]}" --no-traffic --tag candidate
+          else
+            # First deployment: there is no previous revision to keep serving.
+            gcloud run deploy "$SERVICE" "${FLAGS[@]}" --tag candidate
+          fi
+          REVISION="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$REGION" \
+            --format 'value(status.latestCreatedRevisionName)')"
+          CANDIDATE_URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$REGION" \
+            --format json | jq -r '[.status.traffic[] | select(.tag == "candidate") | .url][0] // empty')"
+          if [ -z "$REVISION" ] || [ -z "$CANDIDATE_URL" ]; then
+            echo "Could not resolve the new revision or its address" >&2
+            exit 1
+          fi
+          echo "name=${REVISION}" >> "$GITHUB_OUTPUT"
+          echo "url=${CANDIDATE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Smoke test the new revision
+        env:
+          CANDIDATE_URL: ${{ steps.revision.outputs.url }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 20); do
+            if HEALTH="$(curl -fsS "${CANDIDATE_URL}/api/health")"; then break; fi
+            if [ "$attempt" -eq 20 ]; then echo "New revision is not healthy" >&2; exit 1; fi
+            sleep 3
+          done
+          echo "health: $HEALTH"
+          echo "$HEALTH" | grep -q '"service":"sakho-ai"'
+          echo "$HEALTH" | grep -q '"providers":"live"'
+          # The mode the user sees must be the mode that was requested for this deployment.
+          echo "$HEALTH" | grep -q "\"sosMode\":\"$([ "$SOS_MODE" = live ] && echo live || echo demo)\""
+          curl -fsS "${CANDIDATE_URL}/" | grep -q "Sakho AI"
+          curl -fsS -X POST "${CANDIDATE_URL}/api/scheme/check" -H 'Content-Type: application/json' \
+            -d '{"schemeId":"pmmvy","answers":{}}' | grep -q '"status":"questions_remaining"'
+
+      - name: Send traffic to the verified revision
+        id: promote
+        env:
+          REVISION: ${{ steps.revision.outputs.name }}
+        run: |
+          set -euo pipefail
+          gcloud run services update-traffic "$SERVICE" --project "$PROJECT_ID" --region "$REGION" \
+            --to-revisions "${REVISION}=100" --quiet
+          URL="$(gcloud run services describe "$SERVICE" --project "$PROJECT_ID" --region "$REGION" --format 'value(status.url)')"
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          {
+            echo "Revision: ${REVISION}"
+            echo "URL: ${URL}"
+            echo "Emergency mode: ${SOS_MODE}"
+          } >> "$GITHUB_STEP_SUMMARY"
