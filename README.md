@@ -6,6 +6,8 @@ Sakho is a multilingual, voice-first web assistant for women in rural India. A u
 - answer a few questions about the **Pradhan Mantri Matru Vandana Yojana (PMMVY)** maternity benefit and get early, clearly labelled guidance plus a checklist of papers to prepare;
 - open **emergency phone numbers** from any screen.
 
+**Live demo:** <https://sakho-ai.vercel.app/> (hosted on Vercel; emergency buttons are in practice mode and call nobody).
+
 No login is needed. The guided flow works without the microphone, without AI, and, once the page has loaded, without a connection.
 
 > **What Sakho is not.** It is not a government office, a doctor, or an emergency service. It never says a user "is eligible", it cannot place calls or watch for emergencies, and its benefit rules are a **draft** transcribed from official text that no official has reviewed. See [Known limitations](#known-limitations).
