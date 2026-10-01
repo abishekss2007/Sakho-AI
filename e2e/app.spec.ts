@@ -538,6 +538,22 @@ test.describe('responsive', () => {
     await expectNoHorizontalScroll(page);
   });
 
+  test('with very large text the menu moves into the page so every control stays reachable', async ({ page }) => {
+    await seed(page, 'hi');
+    // Larger than the 200% that WCAG asks for, to cover fonts that render taller on other systems.
+    await page.addStyleTag({ content: 'html { font-size: 300% !important; }' });
+    await expect(page.locator('main nav')).toHaveCount(1);
+    await expect(page.getByRole('banner').getByRole('button', { name: 'मदद पाएँ' })).toBeInViewport();
+    await expectNoHorizontalScroll(page);
+    await page.getByRole('button', { name: /लाभ की जाँच करें/ }).click();
+    await page.getByRole('button', { name: 'आगे बढ़ें', exact: true }).click();
+    await page.getByRole('button', { name: 'हाँ', exact: true }).click();
+    await expect(page.getByRole('heading', { name: 'यह आपका कौन सा बच्चा है?' })).toBeVisible();
+    // The menu is still there, at the end of the page.
+    await page.getByRole('navigation').getByRole('button', { name: 'होम', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'बोलने के लिए दबाएँ' })).toBeVisible();
+  });
+
   test('Urdu: the whole interface is right-to-left and phone numbers are not reversed', async ({ page }) => {
     await start(page, 'اردو', 'آگے بڑھیں', 'چھوڑیں');
     await expect(page.locator('html')).toHaveAttribute('lang', 'ur');

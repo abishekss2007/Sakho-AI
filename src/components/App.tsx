@@ -150,6 +150,57 @@ function Shell({ sosMode, providers, speechPreference = 'device', api = defaultA
   const { t } = i18n;
   const languageChosen = prefs.language !== null;
 
+  // With very large text on a small screen, the header and menu could leave no room for the
+  // content between them. When they would take more than half the height, the menu moves into
+  // the scrolling content instead, so every control stays reachable.
+  const headerRef = useRef<HTMLElement>(null);
+  const navRef = useRef<HTMLElement>(null);
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    if (typeof ResizeObserver === 'undefined') return;
+    const measure = () => {
+      const chrome = (headerRef.current?.offsetHeight ?? 0) + (navRef.current?.offsetHeight ?? 0);
+      setCompact(chrome > window.innerHeight * 0.5);
+    };
+    const observer = new ResizeObserver(measure);
+    if (headerRef.current) observer.observe(headerRef.current);
+    if (navRef.current) observer.observe(navRef.current);
+    window.addEventListener('resize', measure);
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [languageChosen]);
+
+  const menu = languageChosen ? (
+        <nav
+          ref={navRef}
+          aria-label={t('navLabel')}
+          className="shrink-0 px-3 pt-1 pb-3"
+        >
+          <ul className="grid grid-cols-4 gap-1 rounded-3xl border border-line-soft bg-card p-1.5 shadow-float">
+            {NAV.map((item) => {
+              const current = screen === item.screen;
+              return (
+                <li key={item.screen}>
+                  <button
+                    type="button"
+                    aria-current={current ? 'page' : undefined}
+                    onClick={() => go(item.screen)}
+                    className={`flex min-h-[min(4rem,64px)] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0.5 py-1.5 text-[0.82rem] leading-tight font-bold transition wrap-anywhere ${
+                      current ? 'bg-primary-soft text-primary' : 'text-muted hover:bg-primary-soft'
+                    }`}
+                  >
+                    <Icon name={item.icon} size={26} />
+                    <span>{t(item.label)}</span>
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </nav>
+  ) : null;
+
   return (
     <AppContext.Provider value={services}>
       <div inert={introOpen || sosOpen} className="mx-auto flex h-dvh max-w-xl flex-col">
@@ -159,7 +210,7 @@ function Shell({ sosMode, providers, speechPreference = 'device', api = defaultA
         >
           {t('skipToContent')}
         </a>
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
+        <header ref={headerRef} className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
           <p className="flex items-center gap-2 text-xl font-bold tracking-tight">
             <BrandMark size={36} />
             {t('appName')}
@@ -208,35 +259,11 @@ function Shell({ sosMode, providers, speechPreference = 'device', api = defaultA
               onShowIntro={() => setIntroOpen(true)}
             />
           )}
+          {compact && <div className="-mx-4 mt-6">{menu}</div>}
         </main>
 
-        {languageChosen && (
-          <nav
-            aria-label={t('navLabel')}
-            className="shrink-0 px-3 pt-1 pb-3"
-          >
-            <ul className="grid grid-cols-4 gap-1 rounded-3xl border border-line-soft bg-card p-1.5 shadow-float">
-              {NAV.map((item) => {
-                const current = screen === item.screen;
-                return (
-                  <li key={item.screen}>
-                    <button
-                      type="button"
-                      aria-current={current ? 'page' : undefined}
-                      onClick={() => go(item.screen)}
-                      className={`flex min-h-[min(4rem,64px)] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0.5 py-1.5 text-[0.82rem] leading-tight font-bold transition wrap-anywhere ${
-                        current ? 'bg-primary-soft text-primary' : 'text-muted hover:bg-primary-soft'
-                      }`}
-                    >
-                      <Icon name={item.icon} size={26} />
-                      <span>{t(item.label)}</span>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </nav>
-        )}
+        {!compact && menu}
+
       </div>
 
       {introOpen && <IntroModal onDone={closeIntro} inert={sosOpen} />}
