@@ -696,6 +696,30 @@ Not yet verified: see [Manual testing still required](#manual-testing-still-requ
 
 The image is a three-stage build (`deps` → `build` → `runtime`) on `node:24.21.0-bookworm-slim`. The runtime stage contains only the Next.js standalone output, runs as the unprivileged `node` user, listens on `0.0.0.0:$PORT` and defaults to demo mode. `.dockerignore` keeps `.env*`, key files, tests and Git history out of the build context.
 
+### Vercel
+
+The app also runs on Vercel without changes: import the GitHub repository and Vercel builds it with `npm run build`. The Docker image, Cloud Run workflow and `output: 'standalone'` setting are simply not used there.
+
+Set these under Project → Settings → Environment Variables, then redeploy (variables only take effect on a new deployment):
+
+| Variable | Value |
+|---|---|
+| `GEMINI_API_KEY` | Your key. Mark it Sensitive. Never commit it. |
+| `SOS_MODE` | Leave unset for practice mode; `live` for real dialer links. |
+| `SPEECH_PREFERENCE` | Leave unset (`device`), or `cloud` with a paid speech quota. |
+| `RATE_LIMIT_REDIS_REST_URL`, `RATE_LIMIT_REDIS_REST_TOKEN` | **Needed on Vercel.** From an Upstash Redis database (available in the Vercel Marketplace). |
+
+What is different on Vercel:
+
+- **Rate limits need the shared store.** Each request may run in a fresh serverless instance, so the in-memory counters reset constantly and limit almost nothing. Without the two Redis variables, the only real ceilings are the quota on the Gemini key and your billing budget. `GET /api/health` shows `"rateLimit":"shared"` once the store is configured.
+- **Deployments are not gated by the tests.** Vercel's Git integration deploys every push to `main` as soon as it builds, whether or not the GitHub checks pass. To gate it, turn on "Require checks to pass" style branch protection and work through pull requests, so only tested commits reach `main`.
+- **Function time limit.** The chat, speech and understanding routes set `maxDuration = 60` seconds. Plans with a lower cap will cut long speech streams short.
+- **Server-side audio reuse** for interface text lives in instance memory, so it helps less than on a long-running container. Nothing breaks.
+- **Google Cloud Text-to-Speech** (`TTS_ENABLED=true`) needs Google credentials, which Vercel does not provide by default. Use Gemini speech or device voices there.
+- The GitHub "Deploy" workflow still runs its checks and then skips the Cloud Run job. That is expected.
+
+Check a deployment by opening `https://<your-app>.vercel.app/api/health`.
+
 ### Local container
 
 ```bash

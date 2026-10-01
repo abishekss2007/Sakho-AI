@@ -4,6 +4,8 @@ import { enforceLimits } from '@/lib/server/rateLimit';
 import { openSpeech } from '@/lib/server/tts';
 
 export const dynamic = 'force-dynamic';
+// Serverless hosts stop a function after a default time limit; these calls wait on an AI provider.
+export const maxDuration = 60;
 
 // Spoken text can be personal, so audio is never cached by browsers or proxies.
 const AUDIO_HEADERS = { 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } as const;
