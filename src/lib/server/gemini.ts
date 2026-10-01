@@ -81,7 +81,14 @@ export const generateJson: GenerateJson = async (request) => {
 
 // ---- Speech ---------------------------------------------------------------
 
-export const DEFAULT_GEMINI_TTS_MODEL = 'gemini-3.8-flash-lite-tts';
+/**
+ * Speech models in the order they are tried. Each has its own request quota,
+ * and free-tier quotas are small, so a busy model falls through to the next.
+ */
+export const GEMINI_TTS_MODELS = ['gemini-3.8-flash-lite-tts', 'gemini-3.8-flash-tts', 'gemini-3.1-flash-tts-preview'] as const;
+export const DEFAULT_GEMINI_TTS_MODEL = GEMINI_TTS_MODELS[0];
+/** "Kore" is one of Gemini's prebuilt female voices; the same voice is used for every language. */
+export const DEFAULT_GEMINI_TTS_VOICE = 'Kore';
 export const GEMINI_TTS_TIMEOUT_MS = 20_000;
 
 export interface SpeechResult {
@@ -109,47 +116,126 @@ export function pcmToWav(pcm: Uint8Array, sampleRate: number): Uint8Array {
   return new Uint8Array(Buffer.concat([header, Buffer.from(pcm)]));
 }
 
+function speechModels(): string[] {
+  const preferred = process.env.GEMINI_TTS_MODEL;
+  return [...new Set([...(preferred ? [preferred] : []), ...GEMINI_TTS_MODELS])];
+}
+
 /** Speech from a Gemini text-to-speech model, using the same API key as chat. */
 export const generateSpeech: GenerateSpeech = async (prompt, requestSignal) => {
   const { apiKey } = geminiConfig();
   if (!apiKey) throw new ApiFailure('provider_unavailable', 'Speech is not configured.');
-  const model = process.env.GEMINI_TTS_MODEL || DEFAULT_GEMINI_TTS_MODEL;
   const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(GEMINI_TTS_TIMEOUT_MS)]);
 
-  let data: string | undefined;
-  let mimeType = '';
-  try {
-    const response = await getClient(apiKey).models.generateContent({
-      model,
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      config: {
-        responseModalities: ['AUDIO'],
-        // One fixed prebuilt voice; the model speaks whatever language the text is in.
-        speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.GEMINI_TTS_VOICE || 'Kore' } } },
-        abortSignal: signal,
-        httpOptions: { timeout: GEMINI_TTS_TIMEOUT_MS, retryOptions: { attempts: 1 } },
-      },
-    });
-    const part = response.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
-    data = part?.inlineData?.data;
-    mimeType = part?.inlineData?.mimeType ?? '';
-  } catch (error) {
-    if (signal.aborted) throw new ApiFailure('provider_timeout', 'Speech took too long.');
-    if (error instanceof ApiError && error.status === 429) {
-      throw new ApiFailure('provider_rate_limited', 'Speech is busy. Try again soon.');
+  let failure = new ApiFailure('provider_unavailable', 'Speech is not available right now.');
+  for (const model of speechModels()) {
+    let data: string | undefined;
+    let mimeType = '';
+    try {
+      const response = await getClient(apiKey).models.generateContent({
+        model,
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.GEMINI_TTS_VOICE || DEFAULT_GEMINI_TTS_VOICE } },
+          },
+          abortSignal: signal,
+          httpOptions: { timeout: GEMINI_TTS_TIMEOUT_MS, retryOptions: { attempts: 1 } },
+        },
+      });
+      const part = response.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
+      data = part?.inlineData?.data;
+      mimeType = part?.inlineData?.mimeType ?? '';
+    } catch (error) {
+      if (signal.aborted) throw new ApiFailure('provider_timeout', 'Speech took too long.');
+      // Over quota, or a model this key cannot use: the next model may still work.
+      failure =
+        error instanceof ApiError && error.status === 429
+          ? new ApiFailure('provider_rate_limited', 'Speech is busy. Try again in a minute.', 60)
+          : new ApiFailure('provider_unavailable', 'Speech is not available right now.');
+      continue;
     }
-    throw new ApiFailure('provider_unavailable', 'Speech is not available right now.');
-  }
 
-  if (!data) throw new ApiFailure('provider_bad_response', 'Speech returned no audio.');
-  const bytes = new Uint8Array(Buffer.from(data, 'base64'));
-  if (mimeType.startsWith('audio/wav') || mimeType.startsWith('audio/x-wav')) {
-    return { bytes, contentType: 'audio/wav' };
+    if (!data) {
+      failure = new ApiFailure('provider_bad_response', 'Speech returned no audio.');
+      continue;
+    }
+    const bytes = new Uint8Array(Buffer.from(data, 'base64'));
+    if (mimeType.startsWith('audio/wav') || mimeType.startsWith('audio/x-wav')) {
+      return { bytes, contentType: 'audio/wav' };
+    }
+    if (/audio\/(l16|pcm)/i.test(mimeType)) {
+      const rate = Number(/rate=(\d+)/.exec(mimeType)?.[1]) || 24_000;
+      return { bytes: pcmToWav(bytes, rate), contentType: 'audio/wav' };
+    }
+    if (mimeType.startsWith('audio/')) return { bytes, contentType: mimeType.split(';')[0] ?? mimeType };
+    failure = new ApiFailure('provider_bad_response', 'Speech returned an unknown format.');
   }
-  if (/audio\/(l16|pcm)/i.test(mimeType)) {
-    const rate = Number(/rate=(\d+)/.exec(mimeType)?.[1]) || 24_000;
-    return { bytes: pcmToWav(bytes, rate), contentType: 'audio/wav' };
+  throw failure;
+};
+
+// ---- Streaming speech -------------------------------------------------------
+
+export const GEMINI_TTS_STREAM_TIMEOUT_MS = 45_000;
+export const SPEECH_SAMPLE_RATE = 24_000;
+
+/** Raw 16-bit mono PCM chunks at `SPEECH_SAMPLE_RATE`, in the order they should be played. */
+export type StreamSpeech = (text: string, signal: AbortSignal) => AsyncGenerator<Uint8Array, void, void>;
+
+/**
+ * Speech as it is generated. Models are tried in order until one starts
+ * producing audio; once audio has started, a failure ends the stream.
+ */
+export const streamSpeech: StreamSpeech = async function* (text, requestSignal) {
+  const { apiKey } = geminiConfig();
+  if (!apiKey) throw new ApiFailure('provider_unavailable', 'Speech is not configured.');
+  const signal = AbortSignal.any([requestSignal, AbortSignal.timeout(GEMINI_TTS_STREAM_TIMEOUT_MS)]);
+
+  let failure = new ApiFailure('provider_unavailable', 'Speech is not available right now.');
+  for (const model of speechModels()) {
+    let started = false;
+    try {
+      const stream = await getClient(apiKey).models.generateContentStream({
+        model,
+        contents: [{ role: 'user', parts: [{ text }] }],
+        config: {
+          responseModalities: ['AUDIO'],
+          speechConfig: {
+            voiceConfig: { prebuiltVoiceConfig: { voiceName: process.env.GEMINI_TTS_VOICE || DEFAULT_GEMINI_TTS_VOICE } },
+          },
+          abortSignal: signal,
+          httpOptions: { timeout: GEMINI_TTS_STREAM_TIMEOUT_MS, retryOptions: { attempts: 1 } },
+        },
+      });
+      for await (const chunk of stream) {
+        const part = chunk.candidates?.[0]?.content?.parts?.find((p) => p.inlineData?.data);
+        const data = part?.inlineData?.data;
+        if (!data) continue;
+        const mimeType = part?.inlineData?.mimeType ?? '';
+        let bytes = new Uint8Array(Buffer.from(data, 'base64'));
+        if (/audio\/(x-)?wav/i.test(mimeType)) bytes = bytes.subarray(44);
+        else if (!/audio\/(l16|pcm)/i.test(mimeType)) {
+          throw new ApiFailure('provider_bad_response', 'Speech returned an unknown format.');
+        }
+        if (bytes.byteLength === 0) continue;
+        started = true;
+        yield bytes;
+      }
+      if (started) return;
+      failure = new ApiFailure('provider_bad_response', 'Speech returned no audio.');
+    } catch (error) {
+      if (signal.aborted) throw new ApiFailure('provider_timeout', 'Speech took too long.');
+      const mapped =
+        error instanceof ApiFailure
+          ? error
+          : error instanceof ApiError && error.status === 429
+            ? new ApiFailure('provider_rate_limited', 'Speech is busy. Try again in a minute.', 60)
+            : new ApiFailure('provider_unavailable', 'Speech is not available right now.');
+      // Audio already reached the listener: another model would start the sentence again.
+      if (started) throw mapped;
+      failure = mapped;
+    }
   }
-  if (mimeType.startsWith('audio/')) return { bytes, contentType: mimeType.split(';')[0] ?? mimeType };
-  throw new ApiFailure('provider_bad_response', 'Speech returned an unknown format.');
+  throw failure;
 };

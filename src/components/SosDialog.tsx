@@ -19,7 +19,7 @@ const SERVICE_TEXT: Record<EmergencyServiceId, { name: DictKey; note: DictKey }>
 function NumberText({ template, number }: { template: string; number: string }) {
   const [before = '', after = ''] = template.split('{number}');
   return (
-    <span className="min-w-0 [overflow-wrap:anywhere]">
+    <span className="min-w-0 wrap-break-word">
       {before}
       <bdi dir="ltr">{number}</bdi>
       {after}
@@ -85,7 +85,7 @@ export function SosDialog({ onClose }: { onClose(): void }) {
                   <div className="flex items-start gap-3">
                     <IconBadge name="phone" tone="danger" />
                     <div className="min-w-0 flex-1">
-                      <h3 className="text-lg font-extrabold">{t(text.name)}</h3>
+                      <h3 className="text-lg font-bold">{t(text.name)}</h3>
                       <p className="text-muted">{t(text.note)}</p>
                     </div>
                   </div>

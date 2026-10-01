@@ -12,7 +12,7 @@ import {
   RedisRestStore,
   resetMemoryStore,
 } from '@/lib/server/rateLimit';
-import { silentWav, synthesize } from '@/lib/server/tts';
+import { clearSharedAudio, openSpeech, silentWav, synthesize } from '@/lib/server/tts';
 import { interpret, interpretWithKeywords, validateModelOutput } from '@/lib/server/understand';
 
 const signal = () => new AbortController().signal;
@@ -111,6 +111,8 @@ describe('chat', () => {
     expect(system).toMatch(/cannot make phone calls/);
     expect(system).toMatch(/Never tell the user she is eligible/);
     expect(system).toMatch(/ONLY the EVIDENCE/);
+    expect(system).toMatch(/Answer EVERY question/);
+    expect(system).toMatch(/Do not help with anything meant to harm/);
   });
 });
 
@@ -130,6 +132,27 @@ describe('understanding questionnaire replies', () => {
     ["I don't know", 'unsure'],
     ['पता नहीं', 'unsure'],
     ['தெரியாது', 'unsure'],
+    ['হ্যাঁ', 'yes'],
+    ['না', 'no'],
+    ['জানি না', 'unsure'],
+    ['হয়', 'yes'],
+    ['নহয়', 'no'],
+    ['నాకు తెలియదు', 'unsure'],
+    ['అవును', 'yes'],
+    ['હા', 'yes'],
+    ['ખબર નથી', 'unsure'],
+    ['ہاں', 'yes'],
+    ['نہیں۔', 'no'],
+    ['پتا نہیں', 'unsure'],
+    ['ಹೌದು', 'yes'],
+    ['ಇಲ್ಲ', 'no'],
+    ['ହଁ', 'yes'],
+    ['അതെ', 'yes'],
+    ['അറിയില്ല', 'unsure'],
+    ['ਹਾਂ', 'yes'],
+    ['ਪਤਾ ਨਹੀਂ', 'unsure'],
+    ['होय', 'yes'],
+    ['माहीत नाही', 'unsure'],
   ])('%s -> %s', (utterance, value) => {
     expect(interpretWithKeywords(q, utterance)).toEqual({ kind: 'answer', value });
   });
@@ -226,8 +249,8 @@ describe('text to speech', () => {
     const speak = vi.fn().mockResolvedValue({ bytes: new Uint8Array([1, 2, 3]), contentType: 'audio/wav' });
     const audio = await synthesize(request, signal(), { speak, geminiAvailable: true });
     expect(audio).toMatchObject({ provider: 'gemini', contentType: 'audio/wav' });
-    const prompt = speak.mock.calls[0]?.[0] as string;
-    expect(prompt).toBe('Read this aloud slowly, warmly and very clearly, in Tamil: வணக்கம்');
+    // Exactly the text and nothing else: any instruction in front would be spoken aloud.
+    expect(speak.mock.calls[0]?.[0]).toBe('வணக்கம்');
   });
 
   it('prefers cloud speech when it is enabled, and passes Gemini failures through', async () => {
@@ -249,7 +272,8 @@ describe('text to speech', () => {
     const [, init] = fetchImpl.mock.calls[0] as [string, RequestInit];
     const body = JSON.parse(init.body as string);
     expect(body.voice).toEqual({ languageCode: 'ta-IN' });
-    expect(body.audioConfig.speakingRate).toBe(0.8);
+    // Speed is applied by the player, never baked into the audio.
+    expect(body.audioConfig.speakingRate).toBe(1);
     expect((init.headers as Record<string, string>).Authorization).toBe('Bearer token');
   });
 
@@ -273,6 +297,121 @@ describe('text to speech', () => {
     const fetchImpl = vi.fn().mockRejectedValue(new DOMException('aborted', 'AbortError'));
     const error = await failure(synthesize(request, controller.signal, { getToken: async () => 't', fetchImpl }));
     expect(error.code).toBe('provider_timeout');
+  });
+
+  it('reuses audio for shared interface text and never for anything else', async () => {
+    clearSharedAudio();
+    const speak = vi.fn().mockResolvedValue({ bytes: new Uint8Array([1]), contentType: 'audio/wav' });
+    const deps = { speak, geminiAvailable: true };
+    await synthesize({ ...request, shared: true }, signal(), deps);
+    await synthesize({ ...request, shared: true }, signal(), deps);
+    expect(speak).toHaveBeenCalledTimes(1);
+    // Speed does not change the audio, so it reuses the same clip; another language does not.
+    await synthesize({ ...request, shared: true, speed: 'fast' }, signal(), deps);
+    expect(speak).toHaveBeenCalledTimes(1);
+    await synthesize({ ...request, shared: true, locale: 'hi' }, signal(), deps);
+    expect(speak).toHaveBeenCalledTimes(2);
+    // Chat replies are not marked shared, so they are synthesised every time and never stored.
+    await synthesize(request, signal(), deps);
+    await synthesize(request, signal(), deps);
+    expect(speak).toHaveBeenCalledTimes(4);
+    clearSharedAudio();
+  });
+
+  it('does not store a failed shared request', async () => {
+    clearSharedAudio();
+    const speak = vi
+      .fn()
+      .mockRejectedValueOnce(new ApiFailure('provider_rate_limited', 'busy'))
+      .mockResolvedValue({ bytes: new Uint8Array([1]), contentType: 'audio/wav' });
+    const deps = { speak, geminiAvailable: true };
+    expect((await failure(synthesize({ ...request, shared: true }, signal(), deps))).code).toBe('provider_rate_limited');
+    expect((await synthesize({ ...request, shared: true }, signal(), deps)).provider).toBe('gemini');
+    clearSharedAudio();
+  });
+
+  describe('streaming', () => {
+    async function* pieces(...items: (number[] | Error)[]) {
+      for (const item of items) {
+        if (item instanceof Error) throw item;
+        yield new Uint8Array(item);
+      }
+    }
+    const drain = async (chunks: AsyncGenerator<Uint8Array, void, void>) => {
+      const out: number[][] = [];
+      for await (const chunk of chunks) out.push([...chunk]);
+      return out;
+    };
+
+    it('relays Gemini audio as it is generated when a stream is requested', async () => {
+      const speakStream = vi.fn(() => pieces([1, 2], [3, 4]));
+      const speech = await openSpeech({ ...request, stream: true }, signal(), { speakStream, geminiAvailable: true });
+      expect(speech.kind).toBe('pcm');
+      if (speech.kind !== 'pcm') return;
+      expect(speech.sampleRate).toBe(24000);
+      expect(await drain(speech.chunks)).toEqual([[1, 2], [3, 4]]);
+      expect((speakStream.mock.calls as unknown[][])[0]?.[0]).toBe('வணக்கம்');
+    });
+
+    it('returns a complete file when no stream is requested, in mock mode, or with cloud speech', async () => {
+      const speak = vi.fn().mockResolvedValue({ bytes: new Uint8Array([1]), contentType: 'audio/wav' });
+      const speakStream = vi.fn(() => pieces([1, 2]));
+      expect((await openSpeech(request, signal(), { speak, speakStream, geminiAvailable: true })).kind).toBe('file');
+      process.env.SAKHO_MOCK_PROVIDERS = 'true';
+      expect((await openSpeech({ ...request, stream: true }, signal(), { speakStream })).kind).toBe('file');
+      delete process.env.SAKHO_MOCK_PROVIDERS;
+      process.env.TTS_ENABLED = 'true';
+      const fetchImpl = vi.fn().mockResolvedValue(Response.json({ audioContent: Buffer.from('mp3').toString('base64') }));
+      const cloud = await openSpeech({ ...request, stream: true }, signal(), { getToken: async () => 't', fetchImpl, speakStream });
+      expect(cloud).toMatchObject({ kind: 'file', audio: { provider: 'google' } });
+      expect(speakStream).not.toHaveBeenCalled();
+    });
+
+    it('fails before any audio as an ordinary error', async () => {
+      const busy = vi.fn(() => pieces(new ApiFailure('provider_rate_limited', 'busy')));
+      expect((await failure(openSpeech({ ...request, stream: true }, signal(), { speakStream: busy, geminiAvailable: true }))).code).toBe(
+        'provider_rate_limited',
+      );
+      const empty = vi.fn(() => pieces());
+      expect((await failure(openSpeech({ ...request, stream: true }, signal(), { speakStream: empty, geminiAvailable: true }))).code).toBe(
+        'provider_bad_response',
+      );
+      expect((await failure(openSpeech({ ...request, stream: true }, signal(), { speakStream: empty, geminiAvailable: false }))).code).toBe(
+        'provider_unavailable',
+      );
+    });
+
+    it('keeps a completed clip of shared interface text and serves it as a file next time', async () => {
+      clearSharedAudio();
+      const speakStream = vi.fn(() => pieces([1, 2], [3, 4]));
+      const deps = { speakStream, geminiAvailable: true };
+      const first = await openSpeech({ ...request, shared: true, stream: true }, signal(), deps);
+      if (first.kind !== 'pcm') throw new Error('expected a stream');
+      await drain(first.chunks);
+      const second = await openSpeech({ ...request, shared: true, stream: true }, signal(), deps);
+      expect(second.kind).toBe('file');
+      if (second.kind !== 'file') return;
+      expect(second.audio.contentType).toBe('audio/wav');
+      expect(second.audio.bytes.byteLength).toBe(48);
+      expect([...second.audio.bytes.slice(44)]).toEqual([1, 2, 3, 4]);
+      expect(speakStream).toHaveBeenCalledTimes(1);
+      clearSharedAudio();
+    });
+
+    it('never keeps a chat reply or a clip that did not finish', async () => {
+      clearSharedAudio();
+      const speakStream = vi.fn(() => pieces([1, 2]));
+      const deps = { speakStream, geminiAvailable: true };
+      const reply = await openSpeech({ ...request, stream: true }, signal(), deps);
+      if (reply.kind === 'pcm') await drain(reply.chunks);
+      expect((await openSpeech({ ...request, stream: true }, signal(), deps)).kind).toBe('pcm');
+
+      const broken = vi.fn(() => pieces([1, 2], new Error('lost')));
+      const partial = await openSpeech({ ...request, shared: true, stream: true }, signal(), { speakStream: broken, geminiAvailable: true });
+      if (partial.kind === 'pcm') await drain(partial.chunks).catch(() => undefined);
+      expect((await openSpeech({ ...request, shared: true, stream: true }, signal(), deps)).kind).toBe('pcm');
+      clearSharedAudio();
+    });
   });
 
   it('returns a valid silent WAV in mock mode', async () => {

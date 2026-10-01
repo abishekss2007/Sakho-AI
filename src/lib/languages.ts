@@ -1,5 +1,5 @@
 /**
- * Language configuration for Sakho AI.
+ * Language configuration for Sakho.
  *
  * Four capabilities are tracked separately because one never implies another:
  * interface text, speech recognition, speech synthesis and AI replies.
@@ -30,7 +30,7 @@ export type LanguageCode = (typeof LANGUAGE_CODES)[number];
  */
 export type UiSupport = 'complete' | 'complete-unreviewed' | 'preview';
 
-/** Recognition is provided by the user's browser; Sakho AI cannot guarantee it. */
+/** Recognition is provided by the user's browser; Sakho cannot guarantee it. */
 export type RecognitionSupport = 'browser-dependent';
 
 /**
@@ -81,17 +81,17 @@ function lang(
 
 export const LANGUAGES: Readonly<Record<LanguageCode, LanguageConfig>> = {
   hi: lang('hi', 'Hindi', 'हिन्दी', 'नमस्ते', 'complete-unreviewed'),
-  bn: lang('bn', 'Bengali', 'বাংলা', 'নমস্কার', 'preview'),
-  mr: lang('mr', 'Marathi', 'मराठी', 'नमस्कार', 'preview'),
-  te: lang('te', 'Telugu', 'తెలుగు', 'నమస్కారం', 'preview'),
+  bn: lang('bn', 'Bengali', 'বাংলা', 'নমস্কার', 'complete-unreviewed'),
+  mr: lang('mr', 'Marathi', 'मराठी', 'नमस्कार', 'complete-unreviewed'),
+  te: lang('te', 'Telugu', 'తెలుగు', 'నమస్కారం', 'complete-unreviewed'),
   ta: lang('ta', 'Tamil', 'தமிழ்', 'வணக்கம்', 'complete-unreviewed'),
-  gu: lang('gu', 'Gujarati', 'ગુજરાતી', 'નમસ્તે', 'preview'),
-  ur: lang('ur', 'Urdu', 'اردو', 'آداب', 'preview', 'rtl'),
-  kn: lang('kn', 'Kannada', 'ಕನ್ನಡ', 'ನಮಸ್ಕಾರ', 'preview'),
-  or: lang('or', 'Odia', 'ଓଡ଼ିଆ', 'ନମସ୍କାର', 'preview'),
-  ml: lang('ml', 'Malayalam', 'മലയാളം', 'നമസ്കാരം', 'preview'),
-  pa: lang('pa', 'Punjabi', 'ਪੰਜਾਬੀ', 'ਸਤ ਸ੍ਰੀ ਅਕਾਲ', 'preview'),
-  as: lang('as', 'Assamese', 'অসমীয়া', 'নমস্কাৰ', 'preview'),
+  gu: lang('gu', 'Gujarati', 'ગુજરાતી', 'નમસ્તે', 'complete-unreviewed'),
+  ur: lang('ur', 'Urdu', 'اردو', 'آداب', 'complete-unreviewed', 'rtl'),
+  kn: lang('kn', 'Kannada', 'ಕನ್ನಡ', 'ನಮಸ್ಕಾರ', 'complete-unreviewed'),
+  or: lang('or', 'Odia', 'ଓଡ଼ିଆ', 'ନମସ୍କାର', 'complete-unreviewed'),
+  ml: lang('ml', 'Malayalam', 'മലയാളം', 'നമസ്കാരം', 'complete-unreviewed'),
+  pa: lang('pa', 'Punjabi', 'ਪੰਜਾਬੀ', 'ਸਤ ਸ੍ਰੀ ਅਕਾਲ', 'complete-unreviewed'),
+  as: lang('as', 'Assamese', 'অসমীয়া', 'নমস্কাৰ', 'complete-unreviewed'),
   en: lang('en', 'English', 'English', 'Hello', 'complete'),
 };
 

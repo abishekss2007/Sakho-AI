@@ -23,6 +23,8 @@ import { Notice } from './ui/Notice';
 export interface AppProps {
   sosMode: SosMode;
   providers: 'live' | 'mock';
+  /** Which voice is tried first. Defaults to the device's own voice. */
+  speechPreference?: 'device' | 'cloud';
   /** Injected in tests. */
   api?: Api;
   speech?: SpeechController;
@@ -52,13 +54,15 @@ export function App(props: AppProps) {
   );
 }
 
-function Shell({ sosMode, providers, api = defaultApi }: AppProps) {
+function Shell({ sosMode, providers, speechPreference = 'device', api = defaultApi }: AppProps) {
   const { controller: speech } = useSpeech();
 
   const [prefs, setPrefs] = useState<Prefs>(loadPrefs);
   const [screen, setScreen] = useState<Screen>(() => (prefs.language ? 'home' : 'language'));
   const [introOpen, setIntroOpen] = useState(false);
   const [sosOpen, setSosOpen] = useState(false);
+  /** Set when the home talk button was pressed: the chat screen starts listening once. */
+  const [autoListen, setAutoListen] = useState(false);
   // Sensitive content: held in memory only, never written to storage.
   const [messages, setMessages] = useState<ChatItem[]>([]);
   const [benefits, setBenefits] = useState<BenefitsState>(EMPTY_BENEFITS);
@@ -134,13 +138,14 @@ function Shell({ sosMode, providers, api = defaultApi }: AppProps) {
 
   const clearSession = () => {
     interruptAll();
+    speech.clearClips();
     setMessages([]);
     setBenefits(EMPTY_BENEFITS);
   };
 
   const services: AppServices = useMemo(
-    () => ({ i18n, prefs, api, online, sosMode, providers, openSos, onInterrupt }),
-    [i18n, prefs, api, online, sosMode, providers, openSos, onInterrupt],
+    () => ({ i18n, prefs, api, online, sosMode, providers, speechPreference, openSos, onInterrupt }),
+    [i18n, prefs, api, online, sosMode, providers, speechPreference, openSos, onInterrupt],
   );
   const { t } = i18n;
   const languageChosen = prefs.language !== null;
@@ -154,27 +159,46 @@ function Shell({ sosMode, providers, api = defaultApi }: AppProps) {
         >
           {t('skipToContent')}
         </a>
-        <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 border-b border-line-soft bg-surface/95 px-4 py-3">
-          <p className="flex items-center gap-2 text-xl font-extrabold tracking-tight text-primary">
-            <BrandMark />
+        <header className="flex shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-2 px-4 py-3">
+          <p className="flex items-center gap-2 text-xl font-bold tracking-tight">
+            <BrandMark size={36} />
             {t('appName')}
           </p>
           {/* Emergency help: always present, labelled with text and an icon, not colour alone. */}
-          <Button variant="danger" size="md" icon="phone" onClick={openSos}>
+          <Button variant="danger" size="md" icon="phone" className="min-h-[48px]! rounded-full py-2" onClick={openSos}>
             {t('getHelp')}
           </Button>
         </header>
 
         {!online && (
-          <div className="shrink-0 px-4 pt-3">
+          <div className="shrink-0 px-4 pt-1">
             <Notice tone="warning">{t('offlineBanner')}</Notice>
           </div>
         )}
 
-        <main id="main" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto px-4 pt-5 pb-6 outline-none">
+        <main id="main" tabIndex={-1} className="min-h-0 flex-1 overflow-y-auto px-4 pt-2 pb-6 outline-none">
           {screen === 'language' && <LanguageScreen current={selected} onConfirm={confirmLanguage} />}
-          {screen === 'home' && <HomeScreen go={go} />}
-          {screen === 'chat' && <ChatScreen messages={messages} setMessages={setMessages} />}
+          {screen === 'home' && (
+            <HomeScreen
+              go={go}
+              onTalk={() => {
+                setAutoListen(true);
+                go('chat');
+              }}
+              onPapers={() => {
+                setBenefits((b) => ({ ...b, stage: 'documents' }));
+                go('benefits');
+              }}
+            />
+          )}
+          {screen === 'chat' && (
+            <ChatScreen
+              messages={messages}
+              setMessages={setMessages}
+              autoListen={autoListen}
+              onAutoListenUsed={() => setAutoListen(false)}
+            />
+          )}
           {screen === 'benefits' && <BenefitsFlow state={benefits} setState={setBenefits} />}
           {screen === 'settings' && (
             <SettingsScreen
@@ -200,8 +224,8 @@ function Shell({ sosMode, providers, api = defaultApi }: AppProps) {
                       type="button"
                       aria-current={current ? 'page' : undefined}
                       onClick={() => go(item.screen)}
-                      className={`flex min-h-16 w-full min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0.5 py-2 text-sm leading-tight font-bold transition [overflow-wrap:anywhere] ${
-                        current ? 'bg-primary text-white shadow-card' : 'text-ink hover:bg-primary-soft'
+                      className={`flex min-h-[min(4rem,64px)] w-full min-w-0 flex-col items-center justify-center gap-1 rounded-2xl px-0.5 py-1.5 text-[0.82rem] leading-tight font-bold transition wrap-anywhere ${
+                        current ? 'bg-primary-soft text-primary' : 'text-muted hover:bg-primary-soft'
                       }`}
                     >
                       <Icon name={item.icon} size={26} />

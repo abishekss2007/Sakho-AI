@@ -10,7 +10,15 @@ import { deferred, flush, makeApi, makeSpeech } from '../helpers';
 
 type UnderstandResult = Awaited<ReturnType<Api['understand']>>;
 
-function setup(options: { language?: string | null; introSeen?: boolean; sosMode?: SosMode; api?: ReturnType<typeof makeApi> } = {}) {
+function setup(
+  options: {
+    language?: string | null;
+    introSeen?: boolean;
+    sosMode?: SosMode;
+    api?: ReturnType<typeof makeApi>;
+    speechPreference?: 'device' | 'cloud';
+  } = {},
+) {
   const { language = 'en', introSeen = true, sosMode = 'demo' } = options;
   if (language) {
     window.localStorage.setItem(PREFS_KEY, JSON.stringify({ language, speed: 'normal', autoRead: false, introSeen }));
@@ -18,7 +26,9 @@ function setup(options: { language?: string | null; introSeen?: boolean; sosMode
   const api = options.api ?? makeApi();
   const speech = makeSpeech();
   const user = userEvent.setup();
-  render(<App sosMode={sosMode} providers="mock" api={api} speech={speech.controller} />);
+  render(
+    <App sosMode={sosMode} providers="mock" speechPreference={options.speechPreference} api={api} speech={speech.controller} />,
+  );
   return { api, speech, user };
 }
 
@@ -37,8 +47,9 @@ describe('onboarding', () => {
     for (const name of ['हिन्दी', 'বাংলা', 'मराठी', 'తెలుగు', 'தமிழ்', 'ગુજરાતી', 'اردو', 'ಕನ್ನಡ', 'ଓଡ଼ିଆ', 'മലയാളം', 'ਪੰਜਾਬੀ', 'অসমীয়া', 'English']) {
       expect(screen.getAllByText(name).length).toBeGreaterThan(0);
     }
-    expect(screen.getAllByText('Preview')).toHaveLength(10);
-    expect(screen.getAllByText('Needs review')).toHaveLength(2);
+    // Only English is marked fully supported; every translation says it still needs review.
+    expect(screen.queryAllByText('Preview')).toHaveLength(0);
+    expect(screen.getAllByText('Needs review')).toHaveLength(12);
     expect(screen.getAllByText('Full')).toHaveLength(1);
     // No main menu until a language is chosen, but emergency help is already there.
     expect(screen.queryByRole('navigation')).not.toBeInTheDocument();
@@ -55,19 +66,36 @@ describe('onboarding', () => {
 
     expect(document.documentElement.lang).toBe('ta');
     expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}').language).toBe('ta');
-    const dialog = screen.getByRole('dialog', { name: 'Sakho AI எப்படி வேலை செய்கிறது' });
+    const dialog = screen.getByRole('dialog', { name: 'Sakho எப்படி வேலை செய்கிறது' });
     expect(within(dialog).getByText('படி 1 / 3')).toBeInTheDocument();
   });
 
-  it('a preview language keeps English screens, lang and direction, and says so', async () => {
-    const { user } = setup({ language: null });
-    await user.click(button(/اردو/));
-    expect(screen.getByText(/Preview\. Screens stay in English\./)).toBeInTheDocument();
-    expect(screen.getByText(/This language is a preview/)).toBeInTheDocument();
-    await user.click(button('Continue'));
-    expect(document.documentElement.lang).toBe('en');
-    expect(document.documentElement.dir).toBe('ltr');
+  it('choosing Urdu turns the whole interface right-to-left and says the text needs review', async () => {
+    const { user } = setup({ language: null, introSeen: true });
+    await user.click(button(/^اردو/));
+    expect(screen.getByRole('heading', { name: 'اپنی زبان منتخب کریں' })).toBeInTheDocument();
+    expect(screen.getByText(/زبان جاننے والے نے ابھی جانچا نہیں ہے/)).toBeInTheDocument();
+    await user.click(button('آگے بڑھیں'));
+    expect(document.documentElement.lang).toBe('ur');
+    expect(document.documentElement.dir).toBe('rtl');
     expect(JSON.parse(window.localStorage.getItem(PREFS_KEY) ?? '{}').language).toBe('ur');
+  });
+
+  it.each([
+    ['bn', 'নমস্কার। আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?'],
+    ['mr', 'नमस्कार. आज मी तुमची कशी मदत करू?'],
+    ['te', 'నమస్కారం. ఈరోజు నేను మీకు ఎలా సహాయం చేయగలను?'],
+    ['gu', 'નમસ્તે. આજે હું તમારી કેવી રીતે મદદ કરું?'],
+    ['kn', 'ನಮಸ್ಕಾರ. ಇಂದು ನಾನು ನಿಮಗೆ ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?'],
+    ['or', 'ନମସ୍କାର। ଆଜି ମୁଁ ଆପଣଙ୍କୁ କିପରି ସାହାଯ୍ୟ କରିବି?'],
+    ['ml', 'നമസ്കാരം. ഇന്ന് ഞാൻ നിങ്ങളെ എങ്ങനെ സഹായിക്കണം?'],
+    ['pa', 'ਸਤ ਸ੍ਰੀ ਅਕਾਲ। ਅੱਜ ਮੈਂ ਤੁਹਾਡੀ ਕੀ ਮਦਦ ਕਰਾਂ?'],
+    ['as', 'নমস্কাৰ। আজি মই আপোনাক কেনেকৈ সহায় কৰিম?'],
+  ])('%s shows its own interface text and page language', (code, greeting) => {
+    setup({ language: code });
+    expect(screen.getByRole('heading', { name: greeting })).toBeInTheDocument();
+    expect(document.documentElement.lang).toBe(code);
+    expect(document.documentElement.dir).toBe('ltr');
   });
 
   it('walks the introduction forwards and backwards and remembers it was seen', async () => {
@@ -90,7 +118,7 @@ describe('emergency help', () => {
   it('is reachable from inside the introduction, and closing it returns to the introduction', async () => {
     const { user } = setup({ language: null });
     await user.click(button('Continue'));
-    const intro = screen.getByRole('dialog', { name: 'How Sakho AI works' });
+    const intro = screen.getByRole('dialog', { name: 'How Sakho works' });
     await user.click(within(intro).getByRole('button', { name: 'Get help' }));
 
     const sos = screen.getByRole('dialog', { name: 'Emergency help' });
@@ -100,7 +128,7 @@ describe('emergency help', () => {
 
     await user.click(within(sos).getByRole('button', { name: 'Close' }));
     expect(screen.queryByRole('dialog', { name: 'Emergency help' })).not.toBeInTheDocument();
-    expect(screen.getByRole('dialog', { name: 'How Sakho AI works' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'How Sakho works' })).toBeInTheDocument();
   });
 
   it('demo mode has no dialer links anywhere and says no call was made', async () => {
@@ -163,10 +191,10 @@ describe('emergency help', () => {
       }),
     });
     const { user, speech } = setup({ api });
-    await user.click(button(/Ask Sakho AI/));
+    await user.click(button(/Ask Sakho/));
     await user.type(screen.getByLabelText('Your question'), 'hello');
     await user.click(button('Send'));
-    expect(screen.getByText('Sakho AI is thinking…')).toBeInTheDocument();
+    expect(screen.getByText('Sakho is thinking…')).toBeInTheDocument();
 
     await user.click(button('Get help'));
     expect(chatSignal?.aborted).toBe(true);
@@ -181,7 +209,7 @@ describe('emergency help', () => {
 
   it('opening help while listening aborts recognition', async () => {
     const { user, speech } = setup();
-    await user.click(button(/Ask Sakho AI/));
+    await user.click(button(/Ask Sakho/));
     await user.click(button('Speak'));
     expect(speech.controller.getStatus()).toBe('listening');
     expect(screen.getByText(/your phone will ask to use the microphone/)).toBeInTheDocument();
@@ -371,6 +399,53 @@ describe('guided benefits', () => {
     expect(speech.ttsRequests[0]?.text).toContain('Are you pregnant now');
   });
 
+  it('marks question audio as shared interface text', async () => {
+    const { user, speech } = setup();
+    await openBenefits(user);
+    await user.click(button('Listen again'));
+    await waitFor(() => expect(speech.ttsRequests[0]).toMatchObject({ shared: true, locale: 'en' }));
+  });
+
+  it('opens the papers list straight from home and offers the questions when there is no guidance yet', async () => {
+    const { user } = setup();
+    await user.click(button(/Papers to prepare/));
+    expect(screen.getByRole('heading', { name: 'Papers to prepare' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'See summary' })).not.toBeInTheDocument();
+    await user.click(within(screen.getByRole('group', { name: 'Aadhaar card' })).getByRole('button', { name: 'Have it' }));
+    await user.click(within(screen.getByRole('main')).getByRole('button', { name: 'Check benefits' }));
+    expect(button('Continue')).toBeInTheDocument();
+  });
+
+  it('reads the question with the device voice straight away when the device has one', async () => {
+    const { user, speech } = setup({ language: 'hi' });
+    speech.options.voices = [{ lang: 'hi-IN', name: 'Google हिन्दी' }];
+    await user.click(button(/लाभ की जाँच करें/));
+    await user.click(button('आगे बढ़ें'));
+    await user.click(await screen.findByRole('button', { name: 'फिर सुनें' }));
+    expect(speech.utterances[0]).toMatchObject({ lang: 'hi-IN' });
+    expect(speech.ttsRequests).toHaveLength(0);
+  });
+
+  it('uses the speech service first when the deployment prefers cloud speech', async () => {
+    const { user, speech } = setup({ language: 'hi', speechPreference: 'cloud' });
+    speech.options.voices = [{ lang: 'hi-IN' }];
+    await user.click(button(/लाभ की जाँच करें/));
+    await user.click(button('आगे बढ़ें'));
+    await user.click(await screen.findByRole('button', { name: 'फिर सुनें' }));
+    await waitFor(() => expect(speech.ttsRequests).toHaveLength(1));
+    expect(speech.utterances).toHaveLength(0);
+  });
+
+  it('explains a busy voice service in plain words and keeps the question usable', async () => {
+    const { user, speech } = setup();
+    speech.options.tts = 'busy';
+    speech.options.voices = [{ lang: 'hi-IN' }];
+    await openBenefits(user);
+    await user.click(button('Listen again'));
+    await screen.findByText('The voice is busy right now. Please try again in a minute. The text is shown on the screen.');
+    expect(button('Yes')).toBeEnabled();
+  });
+
   it('goes back one question and keeps earlier answers', async () => {
     const { user, api } = setup();
     await openBenefits(user);
@@ -438,7 +513,7 @@ describe('chat', () => {
       provider: 'gemini',
     });
     const { user, speech } = setup({ api });
-    await user.click(button(/Ask Sakho AI/));
+    await user.click(button(/Ask Sakho/));
     expect(button('Send')).toBeDisabled();
     await user.type(screen.getByLabelText('Your question'), 'How much money?');
     await user.click(button('Send'));
@@ -451,7 +526,7 @@ describe('chat', () => {
     });
     expect(screen.getByText('Aadhaar').tagName).toBe('LI');
     expect(screen.getByRole('link', { name: 'PMMVY FAQ' })).toHaveAttribute('rel', 'noopener noreferrer');
-    expect(screen.getByText('If this is urgent, press "Get help". Sakho AI cannot call for you.')).toBeInTheDocument();
+    expect(screen.getByText('If this is urgent, press "Get help". Sakho cannot call for you.')).toBeInTheDocument();
     expect(screen.getByLabelText('Your question')).toHaveValue('');
     // A typed question is not read aloud unless the user turned that on.
     expect(speech.ttsRequests).toHaveLength(0);
@@ -468,7 +543,7 @@ describe('chat', () => {
 
   it('a spoken question is sent as voice and the answer is spoken; Stop stops it', async () => {
     const { user, speech, api } = setup({ language: 'hi' });
-    await user.click(button(/Sakho AI से पूछें/));
+    await user.click(button(/Sakho से पूछें/));
     await user.click(button('बोलें'));
     expect(speech.recognitions[0]?.lang).toBe('hi-IN');
     act(() => speech.recognitions[0]?.say('कौन से कागज़ चाहिए'));
@@ -490,7 +565,7 @@ describe('chat', () => {
     const api = makeApi();
     api.chat.mockRejectedValueOnce(new ApiClientError(code));
     const { user } = setup({ api });
-    await user.click(button(/Ask Sakho AI/));
+    await user.click(button(/Ask Sakho/));
     await user.type(screen.getByLabelText('Your question'), 'hello');
     await user.click(button('Send'));
     expect(await screen.findByRole('alert')).toHaveTextContent(message);
@@ -499,6 +574,46 @@ describe('chat', () => {
     await screen.findByText('Test reply');
     expect(api.chat.mock.calls[1]?.[0].messages).toEqual([{ role: 'user', text: 'hello' }]);
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('the home talk button opens chat and starts listening once', async () => {
+    const { user, speech, api } = setup();
+    await user.click(button('Tap to talk'));
+    expect(screen.getByRole('heading', { name: 'Ask Sakho' })).toBeInTheDocument();
+    expect(speech.controller.getStatus()).toBe('listening');
+    expect(speech.recognitions).toHaveLength(1);
+    act(() => speech.recognitions[0]?.say('how do I open a bank account'));
+    await screen.findByText('Test reply');
+    expect(api.chat.mock.calls[0]?.[0]).toMatchObject({ inputMode: 'voice' });
+    // Coming back to chat by the menu must not switch the microphone on again.
+    await user.click(button('Home'));
+    await user.click(button('Ask'));
+    expect(speech.recognitions).toHaveLength(1);
+  });
+
+  it('a suggested question is sent with one tap', async () => {
+    const { user, api } = setup();
+    await user.click(button(/Ask Sakho/));
+    await user.click(button('What should I eat during pregnancy?'));
+    await screen.findByText('Test reply');
+    expect(api.chat.mock.calls[0]?.[0].messages).toEqual([{ role: 'user', text: 'What should I eat during pregnancy?' }]);
+    expect(screen.queryByText('Try asking')).not.toBeInTheDocument();
+  });
+
+  it('listening again replays the same audio without a new speech request', async () => {
+    const { user, speech } = setup();
+    await user.click(button(/Ask Sakho/));
+    await user.type(screen.getByLabelText('Your question'), 'hello');
+    await user.click(button('Send'));
+    await screen.findByText('Test reply');
+    await user.click(button('Listen'));
+    await waitFor(() => expect(speech.audios).toHaveLength(1));
+    act(() => speech.audios[0]?.onended?.());
+    await user.click(await screen.findByRole('button', { name: 'Listen' }));
+    await waitFor(() => expect(speech.audios).toHaveLength(2));
+    expect(speech.ttsRequests).toHaveLength(1);
+    // Chat replies are never marked as shareable audio.
+    expect(speech.ttsRequests[0]).not.toHaveProperty('shared');
   });
 
   it('renders model output as text, never as HTML', () => {
@@ -522,20 +637,20 @@ describe('chat', () => {
       provider: 'gemini',
     });
     const { user } = setup({ api, language: 'ur' });
-    await user.click(button(/Ask Sakho AI/));
-    await user.type(screen.getByLabelText('Your question'), 'ہیلو');
-    await user.click(button('Send'));
+    await user.click(button(/Sakho سے پوچھیں/));
+    await user.type(screen.getByLabelText('آپ کا سوال'), 'ہیلو');
+    await user.click(button('بھیجیں'));
     const reply = (await screen.findByText('ہیلپ لائن 14408')).closest('[dir]');
     expect(reply).toHaveAttribute('dir', 'rtl');
     expect(reply).toHaveAttribute('lang', 'ur-IN');
-    expect(document.documentElement.dir).toBe('ltr');
+    expect(document.documentElement.dir).toBe('rtl');
   });
 });
 
 describe('settings, privacy and navigation', () => {
   it('never writes chat or answers to storage', async () => {
     const { user } = setup();
-    await user.click(button(/Ask Sakho AI/));
+    await user.click(button(/Ask Sakho/));
     await user.type(screen.getByLabelText('Your question'), 'PRIVATE-CHAT-TEXT');
     await user.click(button('Send'));
     await screen.findByText('Test reply');
@@ -569,7 +684,7 @@ describe('settings, privacy and navigation', () => {
 
   it('changes speed and auto-read, saves them, and erases the session on request', async () => {
     const { user, speech } = setup();
-    await user.click(button(/Ask Sakho AI/));
+    await user.click(button(/Ask Sakho/));
     await user.type(screen.getByLabelText('Your question'), 'hello');
     await user.click(button('Send'));
     await screen.findByText('Test reply');
@@ -607,7 +722,7 @@ describe('settings, privacy and navigation', () => {
     vi.stubGlobal('navigator', { ...navigator, onLine: false });
     const { user } = setup();
     expect(screen.getByText('No internet. Chat and voice need internet. The buttons still work.')).toBeInTheDocument();
-    await user.click(button(/Ask Sakho AI/));
+    await user.click(button(/Ask Sakho/));
     expect(screen.getByText('Demo answers: the AI service is not connected.')).toBeInTheDocument();
     vi.unstubAllGlobals();
   });

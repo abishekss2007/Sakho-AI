@@ -4,6 +4,8 @@ import { evaluate } from '@/lib/scheme/engine';
 import {
   SpeechController,
   type AudioLike,
+  type PcmPlayerLike,
+  type TtsStream,
   type RecognitionLike,
   type SpeechEnv,
   type SynthLike,
@@ -40,6 +42,7 @@ export class FakeRecognition implements RecognitionLike {
 }
 
 export class FakeAudio implements AudioLike {
+  playbackRate = 1;
   onended: (() => void) | null = null;
   onerror: (() => void) | null = null;
   paused = false;
@@ -53,6 +56,31 @@ export class FakeAudio implements AudioLike {
   }
 }
 
+export class FakePcmPlayer implements PcmPlayerLike {
+  onended: (() => void) | null = null;
+  chunks: Uint8Array[] = [];
+  finished = false;
+  stopped = false;
+  allowed = true;
+  constructor(public readonly sampleRate: number) {}
+  ready(): Promise<boolean> {
+    return Promise.resolve(this.allowed);
+  }
+  enqueue(chunk: Uint8Array): void {
+    this.chunks.push(chunk);
+  }
+  finish(): void {
+    this.finished = true;
+  }
+  stop(): void {
+    this.stopped = true;
+  }
+  /** The queued audio has finished playing. */
+  end(): void {
+    this.onended?.();
+  }
+}
+
 export interface FakeSpeech {
   env: SpeechEnv;
   controller: SpeechController;
@@ -60,15 +88,21 @@ export interface FakeSpeech {
   audios: FakeAudio[];
   revoked: string[];
   utterances: UtteranceLike[];
-  ttsRequests: { text: string; locale: string; speed: string; signal: AbortSignal }[];
+  ttsRequests: { text: string; locale: string; speed: string; stream?: boolean; signal: AbortSignal }[];
+  players: FakePcmPlayer[];
   /** Mutable switches for a test to flip. */
   options: {
     recognition: boolean;
     startThrows: boolean;
-    tts: 'ok' | 'fail' | 'hang';
+    tts: 'ok' | 'fail' | 'busy' | 'hang';
     voices: VoiceLike[];
     synth: boolean;
     nextPlay: (() => Promise<void>) | null;
+    /** The browser can play streamed audio and the server streams it. */
+    streaming: boolean;
+    /** Chunks the fake server sends for a streamed request; `'break'` makes the stream fail there. */
+    streamChunks: (Uint8Array | 'break')[];
+    playerAllowed: boolean;
   };
   synthCancel: ReturnType<typeof vi.fn>;
 }
@@ -86,7 +120,11 @@ export function makeSpeech(): FakeSpeech {
     voices: [],
     synth: true,
     nextPlay: null,
+    streaming: false,
+    streamChunks: [new Uint8Array([1, 2]), new Uint8Array([3, 4])],
+    playerAllowed: true,
   };
+  const players: FakePcmPlayer[] = [];
   const synthCancel = vi.fn();
   let urls = 0;
 
@@ -119,10 +157,30 @@ export function makeSpeech(): FakeSpeech {
     fetchTts: (body, signal) => {
       ttsRequests.push({ ...body, signal });
       if (options.tts === 'fail') return Promise.reject(new Error('tts down'));
+      if (options.tts === 'busy') return Promise.reject(Object.assign(new Error('over limit'), { name: 'TtsBusy' }));
       if (options.tts === 'hang') {
         return new Promise((_, reject) => signal.addEventListener('abort', () => reject(new Error('aborted'))));
       }
+      if (body.stream && options.streaming) {
+        const script = [...options.streamChunks];
+        async function* chunks() {
+          for (const item of script) {
+            await Promise.resolve();
+            if (item === 'break') throw new Error('stream broke');
+            yield item;
+          }
+        }
+        const stream: TtsStream = { sampleRate: 24000, chunks: chunks() };
+        return Promise.resolve(stream);
+      }
       return Promise.resolve(new Blob(['audio']));
+    },
+    streamingSupported: () => options.streaming,
+    createPcmPlayer: (sampleRate) => {
+      const player = new FakePcmPlayer(sampleRate);
+      player.allowed = options.playerAllowed;
+      players.push(player);
+      return player;
     },
     createAudio: (url) => {
       const audio = new FakeAudio(url);
@@ -136,7 +194,7 @@ export function makeSpeech(): FakeSpeech {
     },
   };
 
-  return { env, controller: new SpeechController(env), recognitions, audios, revoked, utterances, ttsRequests, options, synthCancel };
+  return { env, controller: new SpeechController(env), recognitions, audios, revoked, utterances, ttsRequests, players, options, synthCancel };
 }
 
 /** API double whose scheme check runs the real engine, like the server does. */

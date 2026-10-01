@@ -98,7 +98,7 @@ export function ResultStage({
 
   return (
     <section aria-labelledby="result-title" className="flex flex-col gap-4">
-      <h1 id="result-title" className="text-3xl font-extrabold tracking-tight">
+      <h1 id="result-title" className="text-3xl font-bold tracking-tight">
         {t('resultTitle')}
       </h1>
 
@@ -108,7 +108,7 @@ export function ResultStage({
             name={result.guidance === 'may_apply' ? 'shield' : 'question'}
             tone={result.guidance === 'may_apply' ? 'primary' : 'accent'}
           />
-          <p className="min-w-0 flex-1 text-xl leading-snug font-extrabold">{headline}</p>
+          <p className="min-w-0 flex-1 text-xl leading-snug font-bold">{headline}</p>
         </div>
         {result.reasons.length > 0 && (
           <ul className="mt-3 list-disc ps-6">
@@ -128,7 +128,7 @@ export function ResultStage({
               variant="secondary"
               size="md"
               icon="speaker"
-              onClick={() => void voice.speak(`${headline} ${t('resultNotApproval')} ${t('step1')}`, i18n.uiLanguage)}
+              onClick={() => void voice.speak(`${headline} ${t('resultNotApproval')} ${t('step1')}`, i18n.uiLanguage, true)}
             >
               {t('listen')}
             </Button>
@@ -181,11 +181,14 @@ export function DocumentsStage({
   onChange,
   onBack,
   onNext,
+  hasGuidance,
 }: {
   documents: Partial<Record<DocumentId, DocumentStatus>>;
   onChange(documents: Partial<Record<DocumentId, DocumentStatus>>): void;
   onBack(): void;
   onNext(): void;
+  /** False when the papers list was opened before answering the questions. */
+  hasGuidance: boolean;
 }) {
   const { i18n } = useApp();
   const { t } = i18n;
@@ -195,7 +198,7 @@ export function DocumentsStage({
 
   return (
     <section aria-labelledby="docs-title" className="flex flex-col gap-4">
-      <h1 id="docs-title" className="text-3xl font-extrabold tracking-tight">
+      <h1 id="docs-title" className="text-3xl font-bold tracking-tight">
         {t('docsTitle')}
       </h1>
       <p>{t('docsIntro')}</p>
@@ -220,12 +223,20 @@ export function DocumentsStage({
           );
         })}
       </ul>
-      <Button icon="next" onClick={onNext}>
-        {t('seeSummary')}
-      </Button>
-      <Button variant="quiet" icon="back" onClick={onBack}>
-        {t('back')}
-      </Button>
+      {hasGuidance ? (
+        <>
+          <Button icon="next" onClick={onNext}>
+            {t('seeSummary')}
+          </Button>
+          <Button variant="quiet" icon="back" onClick={onBack}>
+            {t('back')}
+          </Button>
+        </>
+      ) : (
+        <Button icon="next" onClick={onBack}>
+          {t('homeBenefits')}
+        </Button>
+      )}
     </section>
   );
 }
@@ -271,7 +282,7 @@ export function SummaryStage({
 
   return (
     <section aria-labelledby="summary-title" className="flex flex-col gap-4">
-      <h1 id="summary-title" className="text-3xl font-extrabold tracking-tight">
+      <h1 id="summary-title" className="text-3xl font-bold tracking-tight">
         {t('summaryTitle')}
       </h1>
 

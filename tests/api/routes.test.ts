@@ -195,6 +195,35 @@ describe('POST /api/tts', () => {
     expect((await response.arrayBuffer()).byteLength).toBe(Number(response.headers.get('content-length')));
   });
 
+  it('accepts the stream and shared flags and still answers with a file from the mock provider', async () => {
+    process.env.SAKHO_MOCK_PROVIDERS = 'true';
+    const response = await tts(post('/api/tts', { ...body, stream: true, shared: true }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('audio/wav');
+    expect(await errorOf(await tts(post('/api/tts', { ...body, stream: 'yes' })))).toBe('invalid_request');
+  });
+
+  it('streams raw PCM, uncached, when Gemini speech is the provider', async () => {
+    vi.resetModules();
+    vi.doMock('@/lib/server/gemini', async (original) => ({
+      ...(await original<typeof import('@/lib/server/gemini')>()),
+      geminiConfigured: () => true,
+      streamSpeech: async function* () {
+        yield new Uint8Array([1, 2]);
+        yield new Uint8Array([3, 4]);
+      },
+    }));
+    const { POST } = await import('@/app/api/tts/route');
+    const response = await POST(post('/api/tts', { ...body, stream: true }));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toBe('audio/l16;rate=24000;channels=1');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('content-length')).toBeNull();
+    expect([...new Uint8Array(await response.arrayBuffer())]).toEqual([1, 2, 3, 4]);
+    vi.doUnmock('@/lib/server/gemini');
+    vi.resetModules();
+  });
+
   it('validates input', async () => {
     expect(await errorOf(await tts(post('/api/tts', { ...body, speed: 'warp' })))).toBe('invalid_request');
     expect(await errorOf(await tts(post('/api/tts', { ...body, text: 'x'.repeat(LIMITS.ttsChars + 1) })))).toBe('invalid_request');

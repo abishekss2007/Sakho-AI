@@ -174,12 +174,24 @@ export type UnderstandResponse = z.infer<typeof understandResponseSchema>;
 
 export const SPEEDS = ['slow', 'normal', 'fast'] as const;
 export type Speed = (typeof SPEEDS)[number];
-export const SPEAKING_RATE: Record<Speed, number> = { slow: 0.8, normal: 1, fast: 1.2 };
 
 export const ttsRequestSchema = z.strictObject({
   text: z.string().trim().min(1).max(LIMITS.ttsChars),
   locale: localeSchema,
+  /** The user's speaking speed. Applied by the player in the browser, so audio is always made at normal speed. */
   speed: z.enum(SPEEDS),
+  /**
+   * True only for fixed interface text (questions, greetings). The server may
+   * keep that audio in memory and reuse it. Never set for chat replies or
+   * anything a user typed.
+   */
+  shared: z.boolean().optional(),
+  /**
+   * Ask for audio as it is generated (raw 16-bit PCM, `audio/l16`) so playback
+   * can start before the whole text is synthesised. The server may still answer
+   * with a complete audio file; the Content-Type says which.
+   */
+  stream: z.boolean().optional(),
 });
 export type TtsRequest = z.infer<typeof ttsRequestSchema>;
 

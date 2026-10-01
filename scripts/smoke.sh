@@ -32,7 +32,7 @@ echo "$HEALTH" | grep -q '"service":"sakho-ai"'
 # With no SOS_MODE given, the image must be in demo mode.
 echo "$HEALTH" | grep -q '"sosMode":"demo"'
 
-curl -fsS "$BASE/" | grep -q "Sakho AI"
+curl -fsS "$BASE/" | grep -q "Sakho"
 
 CHECK="$(curl -fsS -X POST "$BASE/api/scheme/check" -H 'Content-Type: application/json' \
   -d '{"schemeId":"pmmvy","answers":{}}')"

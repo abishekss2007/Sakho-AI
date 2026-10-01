@@ -30,11 +30,11 @@ describe('languages', () => {
     }
   });
 
-  it('labels support honestly: three complete, ten preview, none claimed as reviewed except English', () => {
+  it('labels support honestly: only English is reviewed, every other language says it needs review', () => {
     const byUi = (ui: string) => LANGUAGE_CODES.filter((c) => LANGUAGES[c].ui === ui);
     expect(byUi('complete')).toEqual(['en']);
-    expect(byUi('complete-unreviewed').sort()).toEqual(['hi', 'ta']);
-    expect(byUi('preview')).toHaveLength(10);
+    expect(byUi('complete-unreviewed')).toHaveLength(12);
+    expect(byUi('preview')).toHaveLength(0);
   });
 
   it('a dictionary exists exactly for the languages marked complete', () => {
@@ -64,8 +64,9 @@ describe('languages', () => {
 
 describe('translations', () => {
   const keys = Object.keys(en).sort();
+  const translated = LANGUAGE_CODES.filter((code) => code !== 'en');
 
-  it.each(['hi', 'ta'] as const)('%s has every key, non-empty, with the same placeholders', (code) => {
+  it.each(translated)('%s has every key, non-empty, with the same placeholders', (code) => {
     const dict = DICTIONARIES[code];
     expect(dict).toBeDefined();
     expect(Object.keys(dict ?? {}).sort()).toEqual(keys);
@@ -77,7 +78,7 @@ describe('translations', () => {
     }
   });
 
-  it.each(['hi', 'ta'] as const)('%s is actually translated, not copied English', (code) => {
+  it.each(translated)('%s is actually translated, not copied English', (code) => {
     const dict = DICTIONARIES[code];
     const same = (Object.keys(en) as (keyof typeof en)[]).filter((k) => dict?.[k] === en[k]);
     expect(same).toEqual(['appName']);
@@ -91,7 +92,7 @@ describe('translations', () => {
 
   it('uses the product name everywhere and the old name nowhere', () => {
     for (const dict of Object.values(DICTIONARIES)) {
-      expect(dict?.appName).toBe('Sakho AI');
+      expect(dict?.appName).toBe('Sakho');
       expect(JSON.stringify(dict)).not.toMatch(/thozhi|தோழி/i);
     }
   });
@@ -101,14 +102,22 @@ describe('translations', () => {
     expect(createI18n('hi').t('questionOf', { n: 2, total: 4 })).toBe('सवाल 2 / 4');
   });
 
-  it('preview languages display English and say so through lang and dir', () => {
+  it('the page language and direction follow the chosen language; Urdu is right-to-left', () => {
     const urdu = createI18n('ur');
-    expect(urdu.selected).toBe('ur');
-    expect(urdu.uiLanguage).toBe('en');
-    expect(urdu.uiDir).toBe('ltr');
-    expect(urdu.t('yes')).toBe('Yes');
+    expect(urdu.uiLanguage).toBe('ur');
+    expect(urdu.uiDir).toBe('rtl');
+    expect(urdu.t('yes')).toBe('ہاں');
     expect(displayLanguage('ta')).toBe('ta');
     expect(createI18n('ta').t('yes')).toBe('ஆம்');
+    expect(createI18n('as').t('questionOf', { n: 1, total: 3 })).toBe('প্ৰশ্ন 1 / 3');
+  });
+
+  it('keeps numbers, the helpline and the official address unchanged in every language', () => {
+    for (const dict of Object.values(DICTIONARIES)) {
+      expect(dict?.step3).toContain('14408');
+      expect(dict?.step2).toContain('pmmvy.wcd.gov.in');
+      expect(dict?.reason_not_pregnant_or_recent_birth).toMatch(/270|২৭০|२७०/);
+    }
   });
 });
 

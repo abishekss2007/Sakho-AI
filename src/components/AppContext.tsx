@@ -13,6 +13,7 @@ export interface AppServices {
   online: boolean;
   sosMode: SosMode;
   providers: 'live' | 'mock';
+  speechPreference: 'device' | 'cloud';
   /** Open emergency help. Stops speech and cancels non-essential work first. */
   openSos(): void;
   /**

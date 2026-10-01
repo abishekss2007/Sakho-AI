@@ -11,7 +11,8 @@ import { Button } from './ui/Button';
 import { Icon, IconBadge, type IconName } from './ui/Icon';
 import { Card } from './ui/Notice';
 
-function EntryCard({
+/** A compact entry card: icon tile, title and one short line. */
+function Entry({
   icon,
   title,
   description,
@@ -24,63 +25,70 @@ function EntryCard({
   tone?: 'primary' | 'accent' | 'danger';
   onClick(): void;
 }) {
-  const danger = tone === 'danger';
   return (
     <button
       type="button"
       onClick={onClick}
-      className={`flex min-h-24 w-full items-center gap-4 rounded-3xl p-4 text-start transition active:translate-y-px ${
-        danger
-          ? 'border-2 border-danger-strong bg-linear-to-b from-danger to-danger-strong text-white shadow-danger'
-          : 'border-2 border-line bg-card shadow-card hover:bg-primary-soft'
+      className={`flex min-h-20 w-full items-center gap-4 rounded-3xl border bg-card p-4 text-start shadow-card transition hover:bg-primary-soft active:scale-[0.99] ${
+        tone === 'danger' ? 'border-danger' : 'border-line-soft'
       }`}
     >
-      <IconBadge name={icon} tone={danger ? 'onDark' : tone} />
-      <span className="flex min-w-0 flex-1 flex-col [overflow-wrap:anywhere]">
-        <span className="text-xl font-extrabold">{title}</span>
-        <span className={danger ? '' : 'text-muted'}>{description}</span>
+      <IconBadge name={icon} tone={tone} />
+      <span className="flex min-w-0 flex-1 flex-col wrap-break-word">
+        <span className={`text-lg leading-snug font-bold ${tone === 'danger' ? 'text-danger-strong' : ''}`}>{title}</span>
+        <span className="text-[0.95rem] leading-snug text-muted">{description}</span>
       </span>
-      <Icon name="next" />
+      <span className="text-muted">
+        <Icon name="next" size={22} />
+      </span>
     </button>
   );
 }
 
-export function HomeScreen({ go }: { go(screen: Screen): void }) {
+export function HomeScreen({
+  go,
+  onTalk,
+  onPapers,
+}: {
+  go(screen: Screen): void;
+  onTalk(): void;
+  onPapers(): void;
+}) {
   const { i18n, openSos } = useApp();
   const { t } = i18n;
   return (
-    <section aria-labelledby="home-title" className="flex flex-col gap-4">
-      <div className="relative overflow-hidden rounded-[2rem] bg-linear-to-br from-primary-bright to-primary-strong p-6 text-white shadow-float">
-        <span aria-hidden="true" className="absolute -end-10 -top-12 size-44 rounded-full bg-white/10" />
-        <span aria-hidden="true" className="absolute end-16 -bottom-14 size-32 rounded-full bg-white/10" />
-        <div className="relative flex flex-col gap-4">
-          <h1 id="home-title" className="text-3xl leading-tight font-extrabold tracking-tight">
-            {t('homeGreeting')}
-          </h1>
-          <p className="text-lg">{t('homeSub')}</p>
-          <button
-            type="button"
-            onClick={() => go('chat')}
-            className="flex min-h-20 w-full items-center gap-4 rounded-3xl border-2 border-white bg-card p-4 text-start text-ink shadow-card transition hover:bg-primary-soft active:translate-y-px"
-          >
-            <IconBadge name="mic" />
-            <span className="flex min-w-0 flex-1 flex-col [overflow-wrap:anywhere]">
-              <span className="text-xl font-extrabold">{t('homeAsk')}</span>
-              <span className="text-muted">{t('homeAskDesc')}</span>
-            </span>
-            <Icon name="next" />
-          </button>
-        </div>
+    <section aria-labelledby="home-title" className="flex flex-col gap-5">
+      <div className="flex flex-col gap-1 pt-2">
+        <h1 id="home-title" className="text-3xl leading-tight font-bold tracking-tight">
+          {t('homeGreeting')}
+        </h1>
+        <p className="text-lg text-muted">{t('homeSub')}</p>
       </div>
 
-      <EntryCard
-        icon="benefits"
-        tone="accent"
+      {/* The main action: one large talk button. Its label is real text, not only an icon. */}
+      <button
+        type="button"
+        onClick={onTalk}
+        className="group mx-auto flex flex-col items-center gap-3 rounded-[2.5rem] px-6 py-2 text-center"
+      >
+        <span className="relative flex size-36 items-center justify-center rounded-full bg-linear-to-br from-primary-bright to-rose text-white shadow-float transition group-active:scale-95">
+          <span aria-hidden="true" className="absolute -inset-3 rounded-full border-2 border-primary/20" />
+          <span aria-hidden="true" className="absolute -inset-7 rounded-full border border-primary/10" />
+          <Icon name="mic" size={56} />
+        </span>
+        <span className="pt-4 text-xl font-bold text-primary">{t('homeTalk')}</span>
+      </button>
+
+      <Entry icon="chat" title={t('homeAsk')} description={t('homeAskDesc')} onClick={() => go('chat')} />
+      <Entry
+        icon="shield"
         title={t('homeBenefits')}
         description={t('homeBenefitsDesc')}
         onClick={() => go('benefits')}
       />
-      <EntryCard icon="phone" tone="danger" title={t('getHelp')} description={t('homeHelpDesc')} onClick={openSos} />
+      <Entry icon="benefits" tone="accent" title={t('docsTitle')} description={t('homePapersDesc')} onClick={onPapers} />
+      <Entry icon="globe" title={t('setLanguage')} description={t('homeLanguageDesc')} onClick={() => go('language')} />
+      <Entry icon="phone" tone="danger" title={t('getHelp')} description={t('homeHelpDesc')} onClick={openSos} />
     </section>
   );
 }
@@ -105,7 +113,7 @@ export function SettingsScreen({
 
   return (
     <section aria-labelledby="settings-title" className="flex flex-col gap-4">
-      <h1 id="settings-title" className="text-3xl font-extrabold tracking-tight">
+      <h1 id="settings-title" className="text-3xl font-bold tracking-tight">
         {t('settingsTitle')}
       </h1>
 

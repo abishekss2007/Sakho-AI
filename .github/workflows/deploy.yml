@@ -148,7 +148,7 @@ jobs:
           echo "$HEALTH" | grep -q '"providers":"live"'
           # The mode the user sees must be the mode that was requested for this deployment.
           echo "$HEALTH" | grep -q "\"sosMode\":\"$([ "$SOS_MODE" = live ] && echo live || echo demo)\""
-          curl -fsS "${CANDIDATE_URL}/" | grep -q "Sakho AI"
+          curl -fsS "${CANDIDATE_URL}/" | grep -q "Sakho"
           curl -fsS -X POST "${CANDIDATE_URL}/api/scheme/check" -H 'Content-Type: application/json' \
             -d '{"schemeId":"pmmvy","answers":{}}' | grep -q '"status":"questions_remaining"'
 

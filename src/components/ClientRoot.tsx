@@ -11,11 +11,11 @@ const App = dynamic(() => import('./App').then((m) => m.App), {
   ssr: false,
   loading: () => (
     <p className="p-6 text-2xl font-bold" role="status">
-      Sakho AI
+      Sakho
     </p>
   ),
 });
 
-export function ClientRoot(props: { sosMode: SosMode; providers: 'live' | 'mock' }) {
+export function ClientRoot(props: { sosMode: SosMode; providers: 'live' | 'mock'; speechPreference: 'device' | 'cloud' }) {
   return <App {...props} />;
 }

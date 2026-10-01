@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { DictKey } from '@/lib/i18n';
 import { useApp } from './AppContext';
 import { Button } from './ui/Button';
-import { IconBadge, type IconName } from './ui/Icon';
+import { Icon, type IconName } from './ui/Icon';
 import { Modal } from './ui/Modal';
 
 const STEPS: readonly { icon: IconName; title: DictKey; body: DictKey }[] = [
@@ -33,12 +33,11 @@ export function IntroModal({ onDone, inert }: { onDone(): void; inert: boolean }
         <p className="font-semibold text-muted" aria-live="polite">
           {t('introStep', { n: index + 1, total: STEPS.length })}
         </p>
-        <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-primary-bright to-primary-strong p-6 text-white shadow-float">
-          <span aria-hidden="true" className="absolute -end-8 -top-10 size-36 rounded-full bg-white/10" />
-          <div className="relative flex items-center gap-4">
-            <IconBadge name={step.icon} tone="onDark" size="lg" />
-            <h3 className="min-w-0 flex-1 text-2xl leading-snug font-extrabold">{t(step.title)}</h3>
-          </div>
+        <div className="flex items-center gap-4 rounded-3xl bg-primary-soft p-5">
+          <span className="inline-flex size-16 shrink-0 items-center justify-center rounded-2xl bg-primary text-white">
+            <Icon name={step.icon} size={34} />
+          </span>
+          <h3 className="min-w-0 flex-1 text-xl leading-snug font-bold">{t(step.title)}</h3>
         </div>
         <div className="flex gap-2" aria-hidden="true">
           {STEPS.map((item, i) => (

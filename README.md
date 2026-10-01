@@ -1,6 +1,6 @@
-# Sakho AI
+# Sakho
 
-Sakho AI is a multilingual, voice-first web assistant for women in rural India. A user can **speak, type, or tap large buttons** to:
+Sakho is a multilingual, voice-first web assistant for women in rural India. A user can **speak, type, or tap large buttons** to:
 
 - ask a question and get a short, spoken answer from a Gemini-powered assistant;
 - answer a few questions about the **Pradhan Mantri Matru Vandana Yojana (PMMVY)** maternity benefit and get early, clearly labelled guidance plus a checklist of papers to prepare;
@@ -8,7 +8,7 @@ Sakho AI is a multilingual, voice-first web assistant for women in rural India. 
 
 No login is needed. The guided flow works without the microphone, without AI, and, once the page has loaded, without a connection.
 
-> **What Sakho AI is not.** It is not a government office, a doctor, or an emergency service. It never says a user "is eligible", it cannot place calls or watch for emergencies, and its benefit rules are a **draft** transcribed from official text that no official has reviewed. See [Known limitations](#known-limitations).
+> **What Sakho is not.** It is not a government office, a doctor, or an emergency service. It never says a user "is eligible", it cannot place calls or watch for emergencies, and its benefit rules are a **draft** transcribed from official text that no official has reviewed. See [Known limitations](#known-limitations).
 
 ## Contents
 
@@ -22,12 +22,11 @@ No login is needed. The guided flow works without the microphone, without AI, an
 | PMMVY rules | **Unverified draft** | Transcribed from the official FAQ on 2026-10-01. Not reviewed by an official. Output is always "early guidance". |
 | AI chat (typed) | Implemented | Real Gemini call when `GEMINI_API_KEY` is set. Automated tests use mocks; real replies were spot-checked once in Hindi and Assamese on 2026-10-01. |
 | AI chat (voice in, spoken reply) | Implemented | Needs a browser with speech recognition. Not yet tested on real phones. |
-| Spoken replies | Implemented | Gemini speech with only `GEMINI_API_KEY`, or Google Cloud Text-to-Speech with `TTS_ENABLED=true`; device voice as fallback. Gemini speech returned audio for six languages in a spot check; pronunciation quality is unreviewed. |
+| Spoken replies | Implemented | The device's own voice first (instant, free), then Gemini speech streamed as it is generated, then Google Cloud Text-to-Speech if enabled. **Gemini's free tier allows only about 10 speech requests per day per model**, so cloud speech needs a paid tier for real use. See [Speech](#speech). |
 | Interpreting spoken/typed questionnaire answers | Implemented | Keyword lists for English, Hindi, Tamil; Gemini for longer replies when configured. |
 | Emergency help | Implemented, **demo by default** | Three numbers verified on official pages. Live dialer links only when `SOS_MODE=live`. |
 | English interface | Implemented | Source language. |
-| Hindi and Tamil interface | Implemented, **needs fluent review** | Complete, but written for this build and not yet checked by a fluent speaker. |
-| Ten other languages | **Preview** | Selectable; screens stay in English; the assistant is asked to reply in the language. |
+| Twelve translated interfaces | Implemented, **needs fluent review** | Hindi, Bengali, Marathi, Telugu, Tamil, Gujarati, Urdu (right-to-left), Kannada, Odia, Malayalam, Punjabi and Assamese are complete, but were written for this build and no fluent speaker has checked any of them. |
 | Rate limiting and daily cost cap | Implemented | Shared across instances only when a Redis REST store is configured. |
 | Docker image and Cloud Run workflow | Implemented | Image builds and passes its smoke test in GitHub Actions. Not deployed yet; see [Deployment status](#deployment-status). |
 | Offline reload / installable app | **Not implemented** | There is no service worker. A page already open keeps working in a reduced way. |
@@ -39,8 +38,8 @@ No login is needed. The guided flow works without the microphone, without AI, an
 |---|---|
 | Language | Pick one of 13 languages shown in their own script. Each shows an honest label: Full, Needs review, or Preview. "Hear greeting" plays a greeting. Nothing is saved until "Continue". |
 | Introduction (optional) | Three short illustrated steps with Back, Next, Skip, and a "Get help" button inside the dialog. |
-| Home | Three large entries: Ask Sakho AI, Check benefits, Get help. |
-| Ask (chat) | Type or press "Speak". Replies appear as text with "Listen" / "Stop". "Try again" resends a failed question. "Start new conversation" clears context. |
+| Home | A large "Tap to talk" button that opens chat already listening, then entries for Ask Sakho, Check benefits, Papers to prepare, Language and Get help. |
+| Ask (chat) | Tap a suggested question, type, or press "Speak". Replies appear as text with "Listen" / "Stop". "Try again" resends a failed question. "Start new conversation" clears context. |
 | Check benefits | One question per screen with large labelled answers, "Listen again", a typed or spoken answer, progress, and Back. |
 | Early guidance | One of: answers match the published conditions / may not apply / cannot tell. Always states it is not an approval, shows next steps, sources and rule version. |
 | Papers to prepare | Each document can be marked "Have it" or "Need help"; unmarked stays "Not marked". |
@@ -115,9 +114,10 @@ npm run start
 |---|---|---|---|---|
 | `GEMINI_API_KEY` | Server secret | For real chat | unset | Gemini API key. Without it `/api/chat` returns `503 provider_unavailable`. |
 | `GEMINI_MODEL` | Server | No | `gemini-3.5-flash-lite` | Model name. See [Provider setup](#provider-setup). |
-| `TTS_ENABLED` | Server | No | `false` | `true` uses Google Cloud Text-to-Speech with Application Default Credentials. Otherwise speech comes from Gemini when `GEMINI_API_KEY` is set. |
+| `SPEECH_PREFERENCE` | Server | No | `device` | Which voice is tried first. `device`: the phone's own voice when it has one for the language (instant, free, offline), then the speech service. `cloud`: the speech service first, for one consistent female voice. Use `cloud` only with a paid speech quota. |
+| `TTS_ENABLED` | Server | No | `false` | `true` uses Google Cloud Text-to-Speech with Application Default Credentials. Otherwise the speech service is Gemini when `GEMINI_API_KEY` is set. |
 | `GEMINI_TTS_MODEL` | Server | No | `gemini-3.8-flash-lite-tts` | Gemini speech model. |
-| `GEMINI_TTS_VOICE` | Server | No | `Kore` | Prebuilt Gemini voice name. |
+| `GEMINI_TTS_VOICE` | Server | No | `Kore` | Prebuilt Gemini voice. Kore is a female voice and is used for every language. |
 | `SOS_MODE` | Server | No | `demo` | Only the exact value `live` renders real `tel:` links. |
 | `RATE_LIMIT_PER_MINUTE` | Server | No | `12` | Requests per client, per paid endpoint, per minute. |
 | `DAILY_PAID_REQUEST_CAP` | Server | No | `2000` | Total paid-endpoint requests per UTC day before `503 budget_exhausted`. |
@@ -147,24 +147,31 @@ npm run start
 GEMINI_API_KEY=your-key npm run check:providers
 ```
 
-### Speech with only a Gemini key
+### Speech
 
-If `GEMINI_API_KEY` is set and `TTS_ENABLED` is not `true`, `/api/tts` uses a Gemini speech model (`GEMINI_TTS_MODEL`, default `gemini-3.8-flash-lite-tts`, listed on <https://ai.google.dev/gemini-api/docs/speech-generation> on 2026-10-01). No cloud project is needed. The model reads the text in whatever language it is written in, with one prebuilt voice. Speed is requested in words ("slowly", "brisk"), so it is approximate. Expect roughly three seconds before audio starts. Each "Listen" is a paid model request, counted by the same rate limit and daily cap as chat.
+Something is read aloud in this order (controlled by `SPEECH_PREFERENCE`, default `device`):
 
-### Google Cloud Text-to-Speech
+1. **The device's own voice**, when the browser has one for the language. It starts instantly, costs nothing, has no quota and works offline. A female voice is preferred when the device names one. Long text is queued sentence by sentence because browsers cut off long utterances.
+2. **Gemini speech**, when `GEMINI_API_KEY` is set and `TTS_ENABLED` is not `true`. At normal speed the audio is **streamed**: the server relays raw PCM as Gemini produces it and the browser plays it as it arrives, so sound starts after roughly one second instead of after the whole reply is generated (a three-sentence reply took about 15 seconds to generate in one piece). The finished clip is kept in memory for the visit, so "Listen again" is instant and makes no request.
+3. **Google Cloud Text-to-Speech**, when `TTS_ENABLED=true`. Use this on Google Cloud for predictable quota.
 
-Use this instead when you deploy on Google Cloud and want exact speaking rates and no API-key dependency for speech.
+Set `SPEECH_PREFERENCE=cloud` to put the speech service first, which gives one consistent female voice (`GEMINI_TTS_VOICE`, default Kore) on every device.
 
-1. Enable the Cloud Text-to-Speech API in your project.
-2. Local: `gcloud auth application-default login`, then set `TTS_ENABLED=true`. Cloud Run: the attached service account is used automatically. No key file is used anywhere.
-3. The app requests audio by language code only (for example `ta-IN`) and lets Google choose the voice, so no voice name is hard-coded.
-4. List which of the 13 languages currently have a voice (free call):
+Things to know:
+
+- **Free-tier quota is tiny.** On 2026-10-01 the Gemini free tier allowed **10 speech requests per day per model**. The app tries three speech models in turn (`gemini-3.8-flash-lite-tts`, `gemini-3.8-flash-tts`, `gemini-3.1-flash-tts-preview`), which gives about 30 a day. After that the user sees "The voice is busy right now" unless the device has its own voice. Enable billing on the Gemini project, or use Cloud Text-to-Speech, before relying on cloud speech.
+- **Only the text is sent to the voice.** An instruction such as "read this slowly" in front of the text is spoken aloud in English by Gemini speech, so none is sent.
+- **Speed** (slow, normal, fast) is applied by the player in the browser, not baked into the audio. Slow and fast use complete clips so the pitch is kept; a long reply is then fetched as an opening sentence plus the rest, in parallel.
+- **Audio for fixed interface text** (questions, greetings) is marked `shared` and kept in server memory so it is not generated again for each user. Chat replies are never marked and never kept on the server.
+- Each speech request to Gemini or Cloud Text-to-Speech counts against the same rate limit and daily cap as chat.
+
+List which languages Cloud Text-to-Speech has a voice for (free call):
 
 ```bash
 TTS_ENABLED=true npm run check:providers
 ```
 
-If a language has no cloud voice, or the call fails, the browser's own voice is used when the device has one for that language. If not, the app says so and keeps the text on screen; it never speaks with a voice for a different language.
+If nothing can speak, the app says why and keeps the text on screen. It never speaks with a voice for a different language.
 
 ## API reference
 
@@ -252,10 +259,23 @@ Turns one spoken or typed reply into a validated answer. The server never applie
 ### `POST /api/tts`
 
 ```json
-{ "text": "வணக்கம்", "locale": "ta", "speed": "slow" }
+{ "text": "வணக்கம்", "locale": "ta", "speed": "normal", "stream": true, "shared": false }
 ```
 
-`text` is 1 to 600 characters; `locale` is one of the 13 codes; `speed` is `slow`, `normal` or `fast` (speaking rate 0.8, 1.0, 1.2). Success is `200` with an `audio/mpeg` body (`audio/wav` from the mock provider) and `Cache-Control: no-store`. Errors use the JSON envelope. Rate limited.
+| Field | Rules |
+|---|---|
+| `text` | 1 to 600 characters. Spoken exactly as given. |
+| `locale` | One of the 13 codes. |
+| `speed` | `slow`, `normal` or `fast`. Validated and passed through; the browser's player applies it. Audio is always generated at normal speed. |
+| `stream` | Optional. `true` asks for audio as it is generated. |
+| `shared` | Optional. `true` only for fixed interface text; lets the server reuse the clip. |
+
+Success is `200` with `Cache-Control: no-store`. The `Content-Type` says what the body is:
+
+- `audio/l16;rate=24000;channels=1`: raw 16-bit mono PCM, sent in pieces as it is generated (only when `stream` was requested and Gemini speech is the provider).
+- `audio/wav` or `audio/mpeg`: a complete file (Gemini without streaming, a reused shared clip, Cloud Text-to-Speech, or the mock provider).
+
+A provider failure before the first sound is a normal JSON error (`503 provider_rate_limited` when the speech quota is used up). A failure after audio has started simply ends the stream. Rate limited.
 
 ### `POST /api/chat`
 
@@ -282,6 +302,8 @@ Limits: 1 to 12 messages, each up to 1000 characters, 6000 characters in total, 
   "provider": "gemini"
 }
 ```
+
+The assistant answers questions on any everyday topic from the model's own knowledge. For PMMVY it is told to use only the evidence in `src/lib/scheme/pmmvy.ts` and to cite it; for anything else it gives no sources and adds that details can change.
 
 `sources` only ever contains entries from the server's own registry: the model returns source **ids**, and unknown ids are dropped. Any web address in the reply text that is not in the registry is replaced with `[link removed]`. `safety.urgent` only makes the screen show a "press Get help" prompt; it triggers nothing. Rate limited.
 
@@ -349,9 +371,10 @@ flowchart LR
 | `src/lib/server/tts.ts` | Cloud Text-to-Speech adapter (REST with ADC token). |
 | `src/lib/server/rateLimit.ts` | Per-client and daily counters; memory or Redis REST store. |
 | `src/lib/server/http.ts`, `log.ts` | Body limits, origin check, error envelope, metadata-only logging. |
-| `src/lib/speech/controller.ts` | One controller for recognition, cloud audio and device speech. |
+| `src/lib/speech/controller.ts` | One controller for recognition, device speech, streamed audio and audio clips. |
+| `src/lib/speech/pcmPlayer.ts` | Plays streamed PCM with the Web Audio API as it arrives. |
 | `src/lib/emergency.ts` | Verified services, demo/live resolution, assistive urgent-phrase list. |
-| `src/lib/languages.ts`, `src/lib/i18n/` | 13 language configs with separate capability flags; en/hi/ta dictionaries. |
+| `src/lib/languages.ts`, `src/lib/i18n/` | 13 language configs with separate capability flags; one dictionary per language. |
 | `src/lib/storage.ts`, `share.ts` | Preference storage with legacy migration; sharing and QR content. |
 | `src/components/App.tsx` | Client state: screen, preferences, in-memory chat and answers, interruption. |
 | `src/components/ui/` | Design system: `Button`, `Card`, `Notice`, `Modal`, `Icon`, `SafeText`. |
@@ -503,24 +526,27 @@ Four capabilities are tracked separately in `src/lib/languages.ts`; one never im
 |---|---|---|---|---|---|
 | `en` | English | Complete (source) | Browser-dependent | Unverified | Supported |
 | `hi` | Hindi | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
+| `bn` | Bengali | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
+| `mr` | Marathi | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
+| `te` | Telugu | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
 | `ta` | Tamil | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
-| `bn` | Bengali | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
-| `mr` | Marathi | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
-| `te` | Telugu | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
-| `gu` | Gujarati | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
-| `ur` | Urdu | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
-| `kn` | Kannada | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
-| `or` | Odia | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
-| `ml` | Malayalam | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
-| `pa` | Punjabi | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
-| `as` | Assamese | Preview (English screens) | Browser-dependent | Unverified | Unreviewed |
+| `gu` | Gujarati | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
+| `ur` | Urdu (right-to-left) | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
+| `kn` | Kannada | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
+| `or` | Odia | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
+| `ml` | Malayalam | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
+| `pa` | Punjabi | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
+| `as` | Assamese | Complete, **needs fluent review** | Browser-dependent | Unverified | Unreviewed |
 
-- **Browser-dependent:** recognition is done by the user's browser. Sakho AI cannot guarantee any language.
-- **Unverified:** the cloud voice list was not checked from this environment. `npm run check:providers` prints the real answer.
+- **Needs fluent review:** every string is translated and a test enforces that each language has every key and the same placeholders. But all twelve translations were written by an AI model for this build and **no fluent speaker has read them**. The language screen labels each of them "Needs review". Mistakes are likely, most of all in Odia, Assamese and Punjabi. Have each language reviewed before real users rely on it, starting with the benefit-result and emergency screens.
+- **Browser-dependent:** recognition is done by the user's browser. Sakho cannot guarantee any language.
+- **Unverified:** Gemini speech returned audio for Assamese, Tamil, Hindi, Urdu, Odia and Malayalam in a spot check, and nobody has judged the pronunciation. Device voices vary by phone.
 - **Unreviewed:** Gemini is asked to reply in the language; nobody fluent has reviewed the quality.
-- The page's `lang` and `dir` describe the text actually shown. A preview language therefore keeps `lang="en"` and left-to-right layout. Chat messages carry their own `lang`/`dir`, so Urdu replies are right-to-left while phone numbers stay left-to-right (`<bdi dir="ltr">`).
+- The page's `lang` and `dir` follow the chosen language. Urdu is laid out right-to-left; phone numbers and web addresses stay left-to-right (`<bdi dir="ltr">`), and arrows are mirrored.
+- Spoken or typed questionnaire answers are matched against short keyword lists in each language (yes, no, not sure, repeat, first, second, girl, boy); anything else goes to Gemini when it is configured.
 - Changing language keeps chat and questionnaire progress.
-- To promote a language: add `src/lib/i18n/<code>.ts` implementing every key (a test enforces completeness and placeholders), register it in `src/lib/i18n/index.ts`, and change its `ui` level in `languages.ts`.
+- The `preview` level still exists for a future language without a translation: it would show English screens and say so.
+- To add or correct a language: edit `src/lib/i18n/<code>.ts`. To mark one as reviewed, change its `ui` level in `languages.ts` to `complete`.
 
 ## Rule provenance
 
@@ -554,11 +580,12 @@ Limitations you must keep in mind:
 |---|---|
 | Chat and questionnaire content | Memory only. Erased on reload or with "Erase my chat and answers". Tests assert nothing sensitive reaches `localStorage`, `sessionStorage` or cookies. |
 | Stored on the device | Language, speaking speed, auto-read, introduction-seen. Storage being blocked never breaks the app. |
-| Sent to Gemini | Chat messages (up to the last 12, 6000 characters). Questionnaire replies only when long or not matched by keywords. Google's API terms govern retention on their side. |
+| Sent to Gemini | Chat messages (up to the last 12, 6000 characters). Questionnaire replies only when long or not matched by keywords. Text to be spoken, when the device has no voice of its own. Google's API terms govern retention on their side; on the free tier Google may use prompts to improve its products. |
 | Sent to the speech provider | The text being spoken goes to Gemini speech or Cloud Text-to-Speech, whichever is configured. Responses are `no-store`. |
 | Speech recognition | Performed by the browser's own service (for Chrome, Google's). The microphone is explained the first time "Speak" is pressed. |
 | Server logs | One JSON line per request: request id, route, status, error code, duration. The logging function has no parameter for message text, transcripts, answers, coordinates or IP addresses. Rate-limit keys use a daily-salted hash of the address. |
 | Auto-read | Off by default. A spoken question gets a spoken answer; typed questions are read aloud only if the setting is on. |
+| Audio | Clips fetched during a visit are kept in memory so they can be replayed, and are dropped on reload or "Erase". The server keeps audio only for fixed interface text, never for chat replies. |
 | QR code | By default contains only `https://pmmvy.wcd.gov.in/`. Answers are embedded only after ticking a consent box beside a warning that anyone who scans it can read them. Format: `SAKHO1\|pmmvy\|<rule version>\|<answers>\|<documents>`. |
 | Sharing | Optional. Dismissing the share sheet reports "cancelled" and nothing else happens. There is no SMS or other fallback. |
 | Location | Requested only when "Show my location" is pressed. Shown on screen to read aloud on a call. Never transmitted. Denial never delays the call buttons. |
@@ -613,7 +640,7 @@ Everything below runs with **no Gemini key, no cloud credentials, no microphone,
 
 ### Coverage thresholds
 
-`vitest.config.ts` enforces lines 88%, statements 88%, functions 85%, branches 80% over `src/` (the thin server shells `layout.tsx`, `page.tsx`, `manifest.ts` are excluded and exercised by Playwright). These sit a few points under the measured values (about 94 / 92 / 91 / 87) so that a real drop fails the build without making unrelated changes flaky.
+`vitest.config.ts` enforces lines 88%, statements 88%, functions 85%, branches 80% over `src/` (the thin server shells `layout.tsx`, `page.tsx`, `manifest.ts` are excluded and exercised by Playwright). `src/lib/speech/pcmPlayer.ts` is also excluded: it needs a real browser audio stack and is exercised by a Playwright test instead. The thresholds sit a few points under the measured values (about 94 / 91 / 91 / 85) so that a real drop fails the build without making unrelated changes flaky.
 
 ### Regression tests for the issues inherited from the Thozhi build
 
@@ -641,8 +668,9 @@ None of the following has been done:
 
 - Real Android phones (low-end, Chrome and a second browser): speech recognition per language, audio playback, autoplay behaviour, dialer hand-off in live mode.
 - Screen readers: TalkBack on Android, plus NVDA or VoiceOver.
-- Real Gemini answers in Hindi, Tamil and the preview languages, reviewed by fluent speakers.
-- Hindi and Tamil interface text reviewed by fluent speakers.
+- Real Gemini answers in each of the twelve languages, reviewed by fluent speakers.
+- All twelve translated interfaces reviewed by fluent speakers.
+- Device voices on real phones: which languages have one, and whether it is female.
 - Text readability and comprehension with the intended users.
 
 ## Accessibility
@@ -651,7 +679,7 @@ Target: WCAG 2.2 AA. This is a target with automated evidence, not a certified c
 
 Implemented:
 
-- Base text 18 px (`html { font-size: 112.5% }`) in relative units, line height 1.65 for stacked Indic glyphs, system fonts so nothing downloads.
+- Base text 17 px (`html { font-size: 106.25% }`) in relative units, line height 1.65 for stacked Indic glyphs, system fonts so nothing downloads.
 - Colour tokens with contrast verified by a unit test that reads `globals.css` (text pairs >= 4.5:1, boundaries >= 3:1).
 - Every icon is paired with visible translated text. State is never colour-only: selected items add a check mark and thicker border; emergency uses an icon and label as well as red.
 - Primary actions are at least 56 px tall; all controls at least 48 px (tested).
@@ -712,11 +740,11 @@ gcloud artifacts repositories create "$REPOSITORY" --repository-format=docker --
 Create the two service accounts (one to run the app, one for GitHub to deploy):
 
 ```bash
-gcloud iam service-accounts create sakho-runtime --display-name "Sakho AI runtime" --project "$PROJECT_ID"
+gcloud iam service-accounts create sakho-runtime --display-name "Sakho runtime" --project "$PROJECT_ID"
 ```
 
 ```bash
-gcloud iam service-accounts create sakho-deployer --display-name "Sakho AI GitHub deployer" --project "$PROJECT_ID"
+gcloud iam service-accounts create sakho-deployer --display-name "Sakho GitHub deployer" --project "$PROJECT_ID"
 ```
 
 Store the Gemini key (you will be prompted to paste it; it is not echoed into shell history):
@@ -876,13 +904,15 @@ Limitations: dependency review and CodeQL need the dependency graph and code sca
 | "The microphone is turned off for this site" | Permission was denied. Allow the microphone in the browser's site settings and press "Speak" again. Typing and buttons keep working. |
 | "Voice input does not work in this browser" | The browser has no `SpeechRecognition` (for example Firefox). Use Chrome or Edge, or type. |
 | Microphone or location never prompts | The page is not on HTTPS or `localhost`. Browsers block both on insecure origins. |
-| "This phone has no voice for this language" | Cloud speech is off or failed, and the device has no voice installed for the language. Enable `TTS_ENABLED`, check `npm run check:providers`, or install a voice in the phone's text-to-speech settings. |
+| "The voice is busy right now" | The speech service is over its limit, and the device has no voice for the language. On Gemini's free tier this happens after about 10 speech requests per model per day. Enable billing, use `TTS_ENABLED=true`, or install a voice for the language in the phone's text-to-speech settings. |
+| "Sound is not available for this language right now" | No speech service is configured or it failed, and the device has no voice for the language. Check server logs for `/api/tts`. |
+| Answers are slow to start speaking | The device has no voice for the language, so audio comes from the speech service. Streaming starts it in about a second at normal speed; slow and fast speeds wait for a complete clip. |
 | "Press Listen to hear this" | The browser blocked automatic audio. Pressing "Listen" plays it. |
 | "The sound could not be played" | Both cloud and device speech failed. The text stays on screen. Check server logs for `/api/tts`. |
 | Chat says "not available right now" | `GEMINI_API_KEY` missing or invalid, the model name is unknown or retired, or the provider is down. Check logs for `provider_unavailable`; verify with `npm run check:providers`; try another `GEMINI_MODEL`. |
 | Chat says "too many questions" | Per-client limit. Wait a minute or raise `RATE_LIMIT_PER_MINUTE`. |
 | Everything returns 503 `budget_exhausted` | `DAILY_PAID_REQUEST_CAP` reached. It resets at 00:00 UTC. |
-| Screens are in English after picking a language | That language is a preview. Only English, Hindi and Tamil have interface text. |
+| A translated screen reads wrongly | The translations have not been reviewed by fluent speakers. Correct the text in `src/lib/i18n/<code>.ts`. |
 | "Demo answers: the AI service is not connected" | `SAKHO_MOCK_PROVIDERS=true` is set. Remove it for real answers. |
 | Emergency buttons say "Practice" | Demo mode. Live links need `SOS_MODE=live` on the server. |
 | `EPERM` during `npm run build` on Windows | A running server or OneDrive is holding `.next`. Stop `npm run start`, or move the project out of OneDrive. |
@@ -915,9 +945,11 @@ Never demo with `SOS_MODE=live` unless you intend the buttons to open a real dia
 ## Known limitations
 
 - **Rules are an unverified draft.** Four questions cannot determine PMMVY entitlement. Sources may be out of date. No official or domain expert has reviewed them.
-- **Translations are unreviewed.** Hindi and Tamil text was written for this build and has not been checked by fluent speakers. Ten languages have no interface translation.
+- **All twelve translations are unreviewed.** They were written by an AI model for this build and no fluent speaker has read any of them. Expect mistakes, including on benefit and emergency screens.
+- **The assistant answers any question from the model's own knowledge.** Only PMMVY answers are tied to the verified evidence and cited. Answers about other schemes, prices, health or farming can be wrong or out of date; the assistant is told to say that such details may change, but nothing checks them.
 - **AI quality is barely tested.** All automated tests use mocks. Real Gemini chat and speech were spot-checked once on 2026-10-01 (chat in Hindi and Assamese; speech in six languages returned audio). Nobody fluent has judged the answers or the pronunciation.
-- **Speech support is only partly verified.** Recognition depends on the browser. Google Cloud voice availability per language was not confirmed. Nothing was tested on a physical phone.
+- **Cloud speech is not usable on Gemini's free tier.** About 10 requests per model per day. With that used up, speech depends entirely on the device having a voice for the language.
+- **Speech is only partly verified.** Recognition depends on the browser. Device voices were never tested: no phone was available, and the voice may not be female. Streamed playback was verified at the API and with scripted audio in a browser test, not with live Gemini audio in a browser, because the daily quota ran out. Google Cloud voice availability per language was not confirmed.
 - **Not deployed.** The Cloud Run deployment steps have never run; only the checks and the container smoke test have run on GitHub.
 - **Rate limits are per instance** unless the shared store is configured, and no limit here stops a distributed attacker without an edge layer such as Cloud Armor.
 - **No offline reload.** Without a service worker, reloading while offline fails. Only an already-open page degrades gracefully.

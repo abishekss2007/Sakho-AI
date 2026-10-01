@@ -3,17 +3,17 @@ import type { ReactNode } from 'react';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'Sakho AI',
+  title: 'Sakho',
   description:
-    'Sakho AI is a voice-first helper for women in rural India: ask questions, get early guidance on maternity benefits, and find emergency numbers.',
-  applicationName: 'Sakho AI',
+    'Sakho is a voice-first helper for women in rural India: ask questions, get early guidance on maternity benefits, and find emergency numbers.',
+  applicationName: 'Sakho',
   robots: { index: false, follow: false },
 };
 
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#0b5d5e',
+  themeColor: '#5b3df5',
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {

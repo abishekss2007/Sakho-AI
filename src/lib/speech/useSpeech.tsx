@@ -1,7 +1,8 @@
 'use client';
 
 import { createContext, useContext, useEffect, useMemo, useSyncExternalStore, type ReactNode } from 'react';
-import { SpeechController, type AudioLike, type RecognitionLike, type SpeechEnv, type SynthLike, type UtteranceLike } from './controller';
+import { createPcmPlayer, pcmStreamingSupported } from './pcmPlayer';
+import { SpeechController, TTS_BUSY, type AudioLike, type RecognitionLike, type SpeechEnv, type SynthLike, type UtteranceLike } from './controller';
 
 type RecognitionWindow = {
   SpeechRecognition?: new () => RecognitionLike;
@@ -28,9 +29,33 @@ export function browserSpeechEnv(): SpeechEnv {
         body: JSON.stringify(body),
         signal,
       });
-      if (!response.ok) throw new Error('tts_unavailable');
+      if (!response.ok) {
+        const failure = new Error('tts_unavailable');
+        const code = await response
+          .json()
+          .then((json: { error?: { code?: string } }) => json.error?.code)
+          .catch(() => undefined);
+        if (code === 'provider_rate_limited' || code === 'rate_limited' || code === 'budget_exhausted') failure.name = TTS_BUSY;
+        throw failure;
+      }
+      const type = response.headers.get('content-type') ?? '';
+      const payload = response.body;
+      if (/audio\/l16/i.test(type) && payload) {
+        // Raw PCM relayed while it is being generated.
+        const reader = payload.getReader();
+        async function* chunks() {
+          for (;;) {
+            const { done, value } = await reader.read();
+            if (done) return;
+            if (value) yield value;
+          }
+        }
+        return { sampleRate: Number(/rate=(\d+)/.exec(type)?.[1]) || 24_000, chunks: chunks() };
+      }
       return response.blob();
     },
+    streamingSupported: pcmStreamingSupported,
+    createPcmPlayer,
     createAudio: (url) => new Audio(url) as unknown as AudioLike,
     createObjectURL: (blob) => URL.createObjectURL(blob),
     revokeObjectURL: (url) => URL.revokeObjectURL(url),

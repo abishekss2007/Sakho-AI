@@ -1,12 +1,25 @@
 import { displayLanguage, LANGUAGES, type LanguageCode } from '@/lib/languages';
+import { as } from './as';
+import { bn } from './bn';
 import { en, type Dict, type DictKey } from './en';
+import { gu } from './gu';
 import { hi } from './hi';
+import { kn } from './kn';
+import { ml } from './ml';
+import { mr } from './mr';
+import { or } from './or';
+import { pa } from './pa';
 import { ta } from './ta';
+import { te } from './te';
+import { ur } from './ur';
 
 export type { Dict, DictKey };
 
-/** Languages with a complete dictionary. Everything else is shown in English. */
-export const DICTIONARIES: Partial<Record<LanguageCode, Dict>> = { en, hi, ta };
+/**
+ * Languages with a complete dictionary. A language without one is shown in
+ * English and labelled as a preview.
+ */
+export const DICTIONARIES: Partial<Record<LanguageCode, Dict>> = { as, bn, en, gu, hi, kn, ml, mr, or, pa, ta, te, ur };
 
 export interface I18n {
   /** The language the user picked. */

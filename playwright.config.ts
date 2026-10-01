@@ -25,6 +25,8 @@ export default defineConfig({
       HOSTNAME: '127.0.0.1',
       SAKHO_MOCK_PROVIDERS: 'true',
       SOS_MODE: 'demo',
+      // Always exercise the server speech route; device voices differ between machines.
+      SPEECH_PREFERENCE: 'cloud',
       RATE_LIMIT_PER_MINUTE: '1000',
     },
   },

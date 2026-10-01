@@ -28,7 +28,7 @@ export function Notice({
   return (
     <div
       role={live ? (tone === 'danger' ? 'alert' : 'status') : undefined}
-      className={`flex items-start gap-3 rounded-3xl border-2 p-4 shadow-card ${config.box}`}
+      className={`flex items-start gap-3 rounded-2xl border p-4 ${config.box}`}
     >
       <Icon name={icon ?? config.icon} />
       <div className="min-w-0 flex-1">{children}</div>

@@ -67,7 +67,7 @@ export type EvaluationResult =
       guidance: Guidance;
       reasons: Reason[];
       uncertainQuestions: QuestionId[];
-      /** Always false: Sakho AI is never an approval authority. */
+      /** Always false: Sakho is never an approval authority. */
       official: false;
       requiresOfficialReview: true;
       rules: RuleProvenance;

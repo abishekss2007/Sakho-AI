@@ -100,7 +100,7 @@ test.describe('deployment contract', () => {
     expect(headers['content-security-policy']).toContain("frame-ancestors 'none'");
     expect(headers['x-content-type-options']).toBe('nosniff');
     expect(headers['x-powered-by']).toBeUndefined();
-    await expect(page).toHaveTitle('Sakho AI');
+    await expect(page).toHaveTitle('Sakho');
     const html = await page.content();
     expect(html).not.toMatch(/Create Next App|Thozhi|vercel\.svg/i);
   });
@@ -116,7 +116,7 @@ test.describe('onboarding', () => {
     await page.getByRole('button', { name: 'தொடர்', exact: true }).click();
     await expect(page.locator('html')).toHaveAttribute('lang', 'ta');
 
-    const intro = page.getByRole('dialog', { name: 'Sakho AI எப்படி வேலை செய்கிறது' });
+    const intro = page.getByRole('dialog', { name: 'Sakho எப்படி வேலை செய்கிறது' });
     await expect(intro).toBeVisible();
     await expectNoAxeViolations(page);
 
@@ -144,7 +144,7 @@ test.describe('onboarding', () => {
 test.describe('chat', () => {
   test('typed question gets an answer from /api/chat with a verified source', async ({ page }) => {
     await start(page);
-    await page.getByRole('button', { name: /Ask Sakho AI/ }).click();
+    await page.getByRole('button', { name: /Ask Sakho/ }).click();
     await expectNoAxeViolations(page);
 
     const request = page.waitForRequest('**/api/chat');
@@ -173,19 +173,90 @@ test.describe('chat', () => {
     await expect(page.getByText(/Demo answer: for the first child/)).toHaveCount(0);
   });
 
+  test('streamed speech is played through the browser as it arrives and then stops by itself', async ({ page }) => {
+    // The mock server answers with a file; here the reply is swapped for raw PCM, as real Gemini speech sends it.
+    await page.addInitScript(() => {
+      const state = { scheduled: 0, seconds: 0 };
+      (window as unknown as { __pcm: typeof state }).__pcm = state;
+      const create = AudioContext.prototype.createBufferSource;
+      AudioContext.prototype.createBufferSource = function patched(this: AudioContext) {
+        const source = create.call(this);
+        const start = source.start.bind(source);
+        source.start = (...args: Parameters<typeof start>) => {
+          state.scheduled += 1;
+          state.seconds += source.buffer?.duration ?? 0;
+          return start(...args);
+        };
+        return source;
+      };
+    });
+    await seed(page);
+    const samples = 24000 * 0.4;
+    const pcm = Buffer.alloc(samples * 2 + 1);
+    for (let i = 0; i < samples; i += 1) pcm.writeInt16LE(Math.round(Math.sin(i / 12) * 6000), i * 2);
+    let requestBody: unknown;
+    await page.route('**/api/tts', async (route) => {
+      requestBody = route.request().postDataJSON();
+      await route.fulfill({ status: 200, contentType: 'audio/l16;rate=24000;channels=1', body: pcm });
+    });
+
+    await page.getByRole('button', { name: /Ask Sakho/ }).click();
+    await page.getByLabel('Your question').fill('hello');
+    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await page.getByRole('button', { name: 'Listen', exact: true }).click();
+
+    await expect(page.getByRole('article').getByRole('button', { name: 'Stop', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Listen', exact: true })).toBeVisible({ timeout: 5000 });
+    expect(requestBody).toMatchObject({ stream: true, speed: 'normal', locale: 'en' });
+    const played = await page.evaluate(() => (window as unknown as { __pcm: { scheduled: number; seconds: number } }).__pcm);
+    expect(played.scheduled).toBeGreaterThan(0);
+    // The odd trailing byte is not a whole sample and is left out.
+    expect(played.seconds).toBeCloseTo(0.4, 2);
+    await expect(page.getByRole('status')).toHaveCount(0);
+
+    // Listening again replays the kept clip without another request.
+    let again = 0;
+    await page.route('**/api/tts', async (route) => {
+      again += 1;
+      await route.abort();
+    });
+    await page.getByRole('button', { name: 'Listen', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Listen', exact: true })).toBeVisible({ timeout: 5000 });
+    expect(again).toBe(0);
+  });
+
   test('urgent wording shows the help prompt but does not open help or call by itself', async ({ page }) => {
     await seed(page);
-    await page.getByRole('button', { name: /Ask Sakho AI/ }).click();
+    await page.getByRole('button', { name: /Ask Sakho/ }).click();
     await page.getByLabel('Your question').fill('Please help me, I am bleeding');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    await expect(page.getByText('If this is urgent, press "Get help". Sakho AI cannot call for you.')).toBeVisible();
+    await expect(page.getByText('If this is urgent, press "Get help". Sakho cannot call for you.')).toBeVisible();
     await expect(page.getByRole('dialog')).toHaveCount(0);
+  });
+
+  test('the home talk button starts listening and sends what was said', async ({ page }) => {
+    await fakeRecognition(page, 'how do I open a bank account');
+    await seed(page);
+    const request = page.waitForRequest('**/api/chat');
+    await page.getByRole('button', { name: 'Tap to talk' }).click();
+    expect((await request).postDataJSON()).toMatchObject({
+      messages: [{ role: 'user', text: 'how do I open a bank account' }],
+      inputMode: 'voice',
+    });
+    await expect(page.getByText(/Demo answer \(/)).toBeVisible();
+  });
+
+  test('a suggested question can be sent with one tap', async ({ page }) => {
+    await seed(page);
+    await page.getByRole('button', { name: /Ask Sakho/ }).click();
+    await page.getByRole('button', { name: 'How do I open a bank account?' }).click();
+    await expect(page.getByText(/Demo answer \(/)).toBeVisible();
   });
 
   test('a spoken question is sent as voice input', async ({ page }) => {
     await fakeRecognition(page, 'what papers do I need');
     await seed(page);
-    await page.getByRole('button', { name: /Ask Sakho AI/ }).click();
+    await page.getByRole('button', { name: /Ask Sakho/ }).click();
     const request = page.waitForRequest('**/api/chat');
     await page.getByRole('button', { name: 'Speak', exact: true }).click();
     expect((await request).postDataJSON()).toMatchObject({
@@ -302,7 +373,7 @@ test.describe('safety regressions', () => {
   test('opening emergency help interrupts listening', async ({ page }) => {
     await fakeRecognition(page, null);
     await seed(page);
-    await page.getByRole('button', { name: /Ask Sakho AI/ }).click();
+    await page.getByRole('button', { name: /Ask Sakho/ }).click();
     await page.getByRole('button', { name: 'Speak', exact: true }).click();
     await expect(page.getByText('Listening… speak now')).toBeVisible();
     await page.getByRole('banner').getByRole('button', { name: 'Get help' }).click();
@@ -368,7 +439,7 @@ test.describe('safety regressions', () => {
 test.describe('privacy', () => {
   test('chat and answers are not persisted and disappear on reload', async ({ page }) => {
     await start(page);
-    await page.getByRole('button', { name: /Ask Sakho AI/ }).click();
+    await page.getByRole('button', { name: /Ask Sakho/ }).click();
     await page.getByLabel('Your question').fill('PRIVATE-CHAT-TEXT about my pregnancy');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect(page.getByText(/Demo answer \(/)).toBeVisible();
@@ -424,7 +495,7 @@ test.describe('accessibility and keyboard', () => {
     await seed(page);
     const targets = [
       page.getByRole('banner').getByRole('button', { name: 'Get help' }),
-      page.getByRole('button', { name: /Ask Sakho AI/ }),
+      page.getByRole('button', { name: /Ask Sakho/ }),
       page.getByRole('button', { name: /Check benefits/ }),
       page.getByRole('navigation').getByRole('button', { name: 'Settings' }),
     ];
@@ -467,16 +538,17 @@ test.describe('responsive', () => {
     await expectNoHorizontalScroll(page);
   });
 
-  test('Urdu: replies are right-to-left, phone numbers are not reversed, interface stays honest', async ({ page }) => {
-    await start(page, 'اردو');
-    // Urdu is a preview language: the interface is English, left-to-right, and says so.
-    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-    await expect(page.locator('html')).toHaveAttribute('dir', 'ltr');
+  test('Urdu: the whole interface is right-to-left and phone numbers are not reversed', async ({ page }) => {
+    await start(page, 'اردو', 'آگے بڑھیں', 'چھوڑیں');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'ur');
+    await expect(page.locator('html')).toHaveAttribute('dir', 'rtl');
+    await expectNoHorizontalScroll(page);
+    await expectNoAxeViolations(page);
 
-    await page.getByRole('button', { name: /Ask Sakho AI/ }).click();
+    await page.getByRole('button', { name: /Sakho سے پوچھیں/ }).click();
     const request = page.waitForRequest('**/api/chat');
-    await page.getByLabel('Your question').fill('ہیلپ لائن نمبر 14408');
-    await page.getByRole('button', { name: 'Send', exact: true }).click();
+    await page.getByLabel('آپ کا سوال').fill('ہیلپ لائن نمبر 14408');
+    await page.getByRole('button', { name: 'بھیجیں', exact: true }).click();
     expect((await request).postDataJSON().locale).toBe('ur');
     const mine = page.getByText('ہیلپ لائن نمبر 14408');
     await expect(mine).toBeVisible();
@@ -485,10 +557,34 @@ test.describe('responsive', () => {
     await expect(bubble).toHaveAttribute('lang', 'ur-IN');
     await expectNoHorizontalScroll(page);
 
-    await page.getByRole('banner').getByRole('button', { name: 'Get help' }).click();
+    await page.getByRole('banner').getByRole('button', { name: 'مدد حاصل کریں' }).click();
     const numbers = await page.getByRole('dialog').locator('bdi[dir="ltr"]').allTextContents();
     expect(numbers).toEqual(['112', '181', '1098']);
+    await expectNoHorizontalScroll(page);
   });
+
+  for (const [code, askLabel] of [
+    ['bn', 'জিজ্ঞাসা'],
+    ['te', 'అడగండి'],
+    ['ml', 'ചോദിക്കുക'],
+    ['as', 'সোধক'],
+    ['or', 'ପଚାରନ୍ତୁ'],
+  ] as const) {
+    test(`${code}: translated screens fit a small phone without sideways scrolling`, async ({ page }) => {
+      await seed(page, code);
+      await expect(page.locator('html')).toHaveAttribute('lang', code);
+      await expectNoHorizontalScroll(page);
+      await page.getByRole('navigation').getByRole('button', { name: askLabel, exact: true }).click();
+      await expectNoHorizontalScroll(page);
+      await page.getByRole('navigation').getByRole('button').nth(2).click();
+      await expectNoHorizontalScroll(page);
+      await page.getByRole('navigation').getByRole('button').nth(3).click();
+      await expectNoHorizontalScroll(page);
+      await page.getByRole('banner').getByRole('button').click();
+      await expect(page.getByRole('dialog')).toBeVisible();
+      await expectNoHorizontalScroll(page);
+    });
+  }
 });
 
 test.describe('offline', () => {

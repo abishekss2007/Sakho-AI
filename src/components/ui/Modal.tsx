@@ -55,7 +55,7 @@ export function Modal({ title, closeLabel, onClose, emergency, layer = 'modal', 
 
   return (
     <div
-      className={`fixed inset-0 flex items-end justify-center bg-ink/70 backdrop-blur-sm sm:items-center ${layer === 'top' ? 'z-50' : 'z-40'}`}
+      className={`fixed inset-0 flex items-end justify-center bg-ink/60 backdrop-blur-sm sm:items-center ${layer === 'top' ? 'z-50' : 'z-40'}`}
       inert={inert}
     >
       <div
@@ -65,10 +65,10 @@ export function Modal({ title, closeLabel, onClose, emergency, layer = 'modal', 
         aria-labelledby={titleId}
         tabIndex={-1}
         onKeyDown={onKeyDown}
-        className="max-h-dvh w-full max-w-xl overflow-y-auto rounded-t-[2rem] bg-surface p-5 shadow-float sm:rounded-[2rem]"
+        className="max-h-dvh w-full max-w-xl overflow-y-auto rounded-t-[2rem] bg-surface p-5 shadow-card sm:rounded-[2rem]"
       >
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-          <h2 id={titleId} className="text-2xl font-extrabold tracking-tight">
+          <h2 id={titleId} className="text-2xl font-bold tracking-tight">
             {title}
           </h2>
           <div className="flex flex-wrap gap-2">

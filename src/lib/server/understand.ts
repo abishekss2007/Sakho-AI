@@ -15,12 +15,12 @@ import { geminiConfigured, generateJson, type GenerateJson } from './gemini';
 
 const DEFAULT_SERVICE: EmergencyServiceId = 'erss_112';
 
-const REPEAT = ['repeat', 'again', 'say again', 'once more', 'phir se', 'dobara', 'फिर से', 'दोबारा', 'दुबारा', 'फिर बोलो', 'மீண்டும்', 'திரும்ப', 'மறுபடி', 'மறுபடியும்'];
-const UNSURE = ['not sure', 'dont know', 'do not know', 'maybe', 'unsure', 'no idea', 'pata nahi', 'pata nahin', 'पता नहीं', 'नहीं पता', 'मालूम नहीं', 'शायद', 'தெரியாது', 'தெரியல', 'தெரியவில்லை'];
-const YES = ['yes', 'yeah', 'yep', 'ha', 'haan', 'han', 'हाँ', 'हां', 'ஆம்', 'ஆமாம்', 'ஆமா'];
+const REPEAT = ['repeat', 'again', 'say again', 'once more', 'phir se', 'dobara', 'फिर से', 'दोबारा', 'दुबारा', 'फिर बोलो', 'மீண்டும்', 'திரும்ப', 'மறுபடி', 'மறுபடியும்', 'আবার', 'আকৌ', 'पुन्हा', 'మళ్ళీ', 'మళ్లీ', 'ફરી', 'ફરીથી', 'دوبارہ', 'پھر سے', 'ಮತ್ತೆ', 'ପୁଣି', 'ଆଉଥରେ', 'വീണ്ടും', 'ਦੁਬਾਰਾ', 'ਫਿਰ'];
+const UNSURE = ['not sure', 'dont know', 'do not know', 'maybe', 'unsure', 'no idea', 'pata nahi', 'pata nahin', 'पता नहीं', 'नहीं पता', 'मालूम नहीं', 'शायद', 'தெரியாது', 'தெரியல', 'தெரியவில்லை', 'জানি না', 'জানিনা', 'নাজানো', 'माहीत नाही', 'माहित नाही', 'తెలియదు', 'ખબર નથી', 'پتا نہیں', 'پتہ نہیں', 'معلوم نہیں', 'ಗೊತ್ತಿಲ್ಲ', 'ଜାଣିନି', 'ଜାଣି ନାହିଁ', 'അറിയില്ല', 'ਪਤਾ ਨਹੀਂ'];
+const YES = ['yes', 'yeah', 'yep', 'ha', 'haan', 'han', 'हाँ', 'हां', 'ஆம்', 'ஆமாம்', 'ஆமா', 'হ্যাঁ', 'হয়', 'हो', 'होय', 'అవును', 'હા', 'ہاں', 'جی ہاں', 'ಹೌದು', 'ହଁ', 'അതെ', 'ഉണ്ട്', 'ਹਾਂ', 'ਜੀ ਹਾਂ'];
 /** Politeness particles: "yes" on their own, but also used in "जी नहीं" (no). */
 const YES_POLITE = ['ji', 'जी'];
-const NO = ['no', 'nope', 'nahi', 'nahin', 'illai', 'नहीं', 'नही', 'ना', 'இல்லை', 'இல்ல'];
+const NO = ['no', 'nope', 'nahi', 'nahin', 'illai', 'नहीं', 'नही', 'ना', 'இல்லை', 'இல்ல', 'না', 'নহয়', 'নাই', 'नाही', 'కాదు', 'లేదు', 'ના', 'નથી', 'نہیں', 'ಇಲ್ಲ', 'ଅଲ୍ଲ', 'ନା', 'ନାହିଁ', 'അല്ല', 'ഇല്ല', 'ਨਹੀਂ'];
 
 /**
  * Question-specific vocabularies, keyed by the answer value they map to.
@@ -28,13 +28,13 @@ const NO = ['no', 'nope', 'nahi', 'nahin', 'illai', 'नहीं', 'नही',
  */
 const SPECIFIC: Partial<Record<QuestionId, Record<string, string[]>>> = {
   child_order: {
-    first: ['first', '1st', 'pehla', 'pahla', 'pehli', 'पहला', 'पहली', 'पहले', 'முதல்', 'முதலாவது'],
-    second: ['second', '2nd', 'doosra', 'dusra', 'doosri', 'दूसरा', 'दूसरी', 'दूसरे', 'இரண்டாவது', 'இரண்டாம்'],
-    third_or_later: ['third', '3rd', 'fourth', 'teesra', 'तीसरा', 'तीसरी', 'चौथा', 'चौथी', 'மூன்றாவது', 'நான்காவது'],
+    first: ['first', '1st', 'pehla', 'pahla', 'pehli', 'पहला', 'पहली', 'पहले', 'முதல்', 'முதலாவது', 'প্রথম', 'প্ৰথম', 'पहिला', 'पहिले', 'మొదటి', 'પહેલું', 'પહેલો', 'پہلا', 'پہلی', 'ಮೊದಲ', 'ಮೊದಲನೇ', 'ପ୍ରଥମ', 'ആദ്യ', 'ആദ്യത്തെ', 'ਪਹਿਲਾ', 'ਪਹਿਲੀ'],
+    second: ['second', '2nd', 'doosra', 'dusra', 'doosri', 'दूसरा', 'दूसरी', 'दूसरे', 'இரண்டாவது', 'இரண்டாம்', 'দ্বিতীয়', 'दुसरा', 'दुसरे', 'రెండో', 'రెండవ', 'બીજું', 'બીજો', 'دوسرا', 'دوسری', 'ಎರಡನೇ', 'ଦ୍ୱିତୀୟ', 'രണ്ടാമത്തെ', 'ਦੂਜਾ', 'ਦੂਜੀ'],
+    third_or_later: ['third', '3rd', 'fourth', 'teesra', 'तीसरा', 'तीसरी', 'चौथा', 'चौथी', 'மூன்றாவது', 'நான்காவது', 'তৃতীয়', 'तिसरा', 'तिसरे', 'మూడో', 'మూడవ', 'ત્રીજું', 'ત્રીજો', 'تیسرا', 'تیسری', 'ಮೂರನೇ', 'ତୃତୀୟ', 'മൂന്നാമത്തെ', 'ਤੀਜਾ', 'ਤੀਜੀ'],
   },
   second_child_girl: {
-    yes: ['girl', 'daughter', 'beti', 'ladki', 'लड़की', 'बेटी', 'பெண்', 'மகள்'],
-    no: ['boy', 'son', 'beta', 'ladka', 'लड़का', 'बेटा', 'ஆண்', 'மகன்'],
+    yes: ['girl', 'daughter', 'beti', 'ladki', 'लड़की', 'बेटी', 'பெண்', 'மகள்', 'মেয়ে', 'ছোৱালী', 'मुलगी', 'ఆడపిల్ల', 'అమ్మాయి', 'દીકરી', 'છોકરી', 'لڑکی', 'بیٹی', 'ಹೆಣ್ಣು', 'ଝିଅ', 'പെൺകുട്ടി', 'പെൺ', 'ਕੁੜੀ', 'ਧੀ'],
+    no: ['boy', 'son', 'beta', 'ladka', 'लड़का', 'बेटा', 'ஆண்', 'மகன்', 'ছেলে', 'ল’ৰা', 'मुलगा', 'మగపిల్లవాడు', 'అబ్బాయి', 'દીકરો', 'છોકરો', 'لڑکا', 'بیٹا', 'ಗಂಡು', 'ପୁଅ', 'ആൺകുട്ടി', 'ആൺ', 'ਮੁੰਡਾ', 'ਪੁੱਤਰ'],
   },
 };
 
@@ -42,7 +42,7 @@ function normalise(text: string): string {
   return ` ${text
     .toLowerCase()
     .replace(/[’']/g, '')
-    .replace(/[.,!?;:"“”()।\-]/g, ' ')
+    .replace(/[.,!?;:"“”()।\-،۔؟]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()} `;
 }
@@ -145,7 +145,7 @@ export async function interpret(
       ].join('\n'),
       contents: [{ role: 'user', text: request.utterance }],
       schema: MODEL_JSON_SCHEMA,
-      maxOutputTokens: 60,
+      maxOutputTokens: 1024,
       signal,
     });
     return { interpretation: validateModelOutput(request.questionId, raw), via: 'model' };

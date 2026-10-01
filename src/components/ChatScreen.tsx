@@ -30,12 +30,19 @@ function errorMessage(code: ClientErrorCode): DictKey {
   }
 }
 
+const SUGGESTIONS: readonly DictKey[] = ['sug1', 'sug2', 'sug3'];
+
 export function ChatScreen({
   messages,
   setMessages,
+  autoListen = false,
+  onAutoListenUsed,
 }: {
   messages: ChatItem[];
   setMessages: Dispatch<SetStateAction<ChatItem[]>>;
+  /** Start listening as soon as the screen opens (the home talk button was pressed). */
+  autoListen?: boolean;
+  onAutoListenUsed?(): void;
 }) {
   const { i18n, prefs, api, openSos, onInterrupt, providers } = useApp();
   const { t } = i18n;
@@ -55,8 +62,9 @@ export function ChatScreen({
   useEffect(() => onInterrupt(() => abortRef.current?.abort()), [onInterrupt]);
   useEffect(() => () => abortRef.current?.abort(), []);
 
+  // Follow the conversation, but leave an empty chat at the top so its title stays visible.
   useEffect(() => {
-    endRef.current?.scrollIntoView?.({ block: 'end' });
+    if (messages.length > 0) endRef.current?.scrollIntoView?.({ block: 'end' });
   }, [messages.length, pending]);
 
   const newId = () => `m${(nextId.current += 1)}-${messages.length}`;
@@ -131,13 +139,26 @@ export function ChatScreen({
     setDraft('');
   };
 
+  const startListening = () => voice.listen(i18n.selected, (transcript) => send(transcript, 'voice'));
+
+  // Opened from the home talk button: listen straight away, once.
+  const autoStarted = useRef(false);
+  useEffect(() => {
+    if (!autoListen || autoStarted.current) return;
+    autoStarted.current = true;
+    onAutoListenUsed?.();
+    startListening();
+    // Runs once on arrival; later renders must not restart the microphone.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoListen]);
+
   const last = messages[messages.length - 1];
   const awaitingReply = !pending && last?.role === 'user';
 
   return (
     <section aria-labelledby="chat-title" className="flex flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <h1 id="chat-title" className="text-3xl font-extrabold tracking-tight">
+        <h1 id="chat-title" className="text-3xl font-bold tracking-tight">
           {t('chatTitle')}
         </h1>
         {messages.length > 0 && (
@@ -157,9 +178,21 @@ export function ChatScreen({
 
       <div role="log" aria-live="polite" aria-label={t('chatTitle')} className="flex flex-col gap-3">
         {messages.length === 0 && (
-          <div className="flex items-start gap-3 rounded-3xl border border-line-soft bg-card p-4 shadow-card">
-            <BrandMark size={44} />
-            <p className="min-w-0 flex-1">{t('chatEmpty')}</p>
+          <div className="flex flex-col gap-3">
+            <div className="flex items-start gap-3 rounded-3xl border border-line-soft bg-card p-4 shadow-card">
+              <BrandMark size={40} />
+              <p className="min-w-0 flex-1">{t('chatEmpty')}</p>
+            </div>
+            <p className="font-semibold text-muted">{t('chatTry')}</p>
+            <ul className="flex flex-col gap-2">
+              {SUGGESTIONS.map((key) => (
+                <li key={key}>
+                  <Button variant="secondary" size="md" block align="start" icon="sparkle" disabled={pending} onClick={() => send(t(key), 'text')}>
+                    {t(key)}
+                  </Button>
+                </li>
+              ))}
+            </ul>
           </div>
         )}
         {messages.map((message) => {
@@ -170,7 +203,7 @@ export function ChatScreen({
               key={message.id}
               className={`rounded-3xl p-4 shadow-card ${
                 mine
-                  ? 'ms-8 rounded-ee-lg bg-linear-to-b from-primary-bright to-primary text-white'
+                  ? 'ms-8 rounded-ee-lg bg-primary text-white'
                   : 'me-8 rounded-es-lg border border-line-soft bg-card'
               }`}
             >
@@ -269,7 +302,7 @@ export function ChatScreen({
               variant="secondary"
               icon="mic"
               disabled={pending}
-              onClick={() => voice.listen(i18n.selected, (transcript) => send(transcript, 'voice'))}
+              onClick={startListening}
             >
               {t('speak')}
             </Button>

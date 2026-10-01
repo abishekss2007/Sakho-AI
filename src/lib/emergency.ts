@@ -62,6 +62,7 @@ const URGENT_PATTERNS: readonly RegExp[] = [
   /\b(emergency|help me|save me|bleeding|unconscious|can'?t breathe|cannot breathe|suicide|kill myself|being beaten|he (hit|beat)s? me|rape[d]?)\b/i,
   /(बचाओ|मदद करो|खून बह|बेहोश|सांस नहीं|साँस नहीं|आत्महत्या|मार रहा|मारता है|इमरजेंसी|आपातकाल)/,
   /(காப்பாற்று|உதவி செய்|ரத்தம் வரு|இரத்தம் வரு|ரத்தப்போக்கு|மயக்கம்|மூச்சு விட முடிய|தற்கொலை|அடிக்கிறார்|அடிக்கிறான்|அவசரம்)/,
+  /(বাঁচাও|বচাওক|वाचवा|కాపాడండి|બચાવો|بچاؤ|ಕಾಪಾಡಿ|ବଞ୍ଚାଅ|രക്ഷിക്കൂ|ਬਚਾਓ)/,
 ];
 
 export function looksUrgent(text: string): boolean {

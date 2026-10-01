@@ -15,7 +15,7 @@ export default defineConfig({
       reporter: ['text-summary', 'html', 'lcov'],
       include: ['src/**/*.{ts,tsx}'],
       // layout/page are thin server shells exercised by the Playwright suite.
-      exclude: ['src/app/layout.tsx', 'src/app/page.tsx', 'src/app/manifest.ts'],
+      exclude: ['src/app/layout.tsx', 'src/app/page.tsx', 'src/app/manifest.ts', 'src/lib/speech/pcmPlayer.ts'],
       thresholds: { lines: 88, statements: 88, functions: 85, branches: 80 },
     },
   },

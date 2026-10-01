@@ -88,7 +88,7 @@ export function BenefitsFlow({
 
   const speakQuestion = (id: QuestionId) => {
     const extra = id === 'has_category_proof' ? ` ${PMMVY_CATEGORIES.map((c) => t(CATEGORY_TEXT[c])).join('. ')}.` : '';
-    void voice.speak(`${t(QUESTION_TEXT[id])}${extra}`, i18n.uiLanguage);
+    void voice.speak(`${t(QUESTION_TEXT[id])}${extra}`, i18n.uiLanguage, true);
   };
 
   /** Ask the server to evaluate. Answers are committed together with its result, never before. */
@@ -201,7 +201,7 @@ export function BenefitsFlow({
   };
 
   const heading = (
-    <h1 id="benefits-title" className="text-3xl font-extrabold tracking-tight">
+    <h1 id="benefits-title" className="text-3xl font-bold tracking-tight">
       {t('benefitsTitle')}
     </h1>
   );
@@ -221,7 +221,8 @@ export function BenefitsFlow({
       <DocumentsStage
         documents={state.documents}
         onChange={(documents) => setState((s) => ({ ...s, documents }))}
-        onBack={() => setState((s) => ({ ...s, stage: 'result' }))}
+        hasGuidance={state.result?.status === 'review'}
+        onBack={() => setState((s) => ({ ...s, stage: s.result?.status === 'review' ? 'result' : 'intro' }))}
         onNext={() => setState((s) => ({ ...s, stage: 'summary' }))}
       />
     );
@@ -275,7 +276,7 @@ export function BenefitsFlow({
       )}
 
       <Card>
-        <h2 className="text-2xl leading-snug font-extrabold">{t(QUESTION_TEXT[questionId])}</h2>
+        <h2 className="text-2xl leading-snug font-bold">{t(QUESTION_TEXT[questionId])}</h2>
         {questionId === 'has_category_proof' && (
           <ul className="mt-3 list-disc ps-6">
             {PMMVY_CATEGORIES.map((category) => (
@@ -304,7 +305,7 @@ export function BenefitsFlow({
             block
             align="start"
             icon={OPTION_ICON[value]}
-            className="min-h-16 text-xl"
+            className="min-h-16 text-lg text-ink"
             disabled={pending}
             onClick={() => answer(questionId, value)}
           >

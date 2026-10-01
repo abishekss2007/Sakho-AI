@@ -28,6 +28,15 @@ export function ttsEnabled(): boolean {
   return process.env.TTS_ENABLED === 'true';
 }
 
+/**
+ * Which voice is tried first. `device` (default) is instant and free; set
+ * `cloud` when the speech service has enough quota and one consistent voice
+ * across devices matters more.
+ */
+export function speechPreference(): 'device' | 'cloud' {
+  return process.env.SPEECH_PREFERENCE === 'cloud' ? 'cloud' : 'device';
+}
+
 export function sosMode(): SosMode {
   return resolveSosMode(process.env.SOS_MODE);
 }

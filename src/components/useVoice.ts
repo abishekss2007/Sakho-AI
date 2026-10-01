@@ -18,6 +18,7 @@ const LISTEN_MESSAGES: Record<ListenError, DictKey> = {
 
 const SPEAK_MESSAGES: Partial<Record<SpeakOutcome, DictKey>> = {
   no_voice: 'ttsNoVoice',
+  busy: 'ttsBusy',
   failed: 'ttsFailed',
   blocked: 'ttsBlocked',
 };
@@ -28,25 +29,27 @@ const SPEAK_MESSAGES: Partial<Record<SpeakOutcome, DictKey>> = {
  * only ever produce a notice.
  */
 export function useVoice() {
-  const { prefs } = useApp();
+  const { prefs, speechPreference } = useApp();
   const { controller, status } = useSpeech();
   const [notice, setNotice] = useState<DictKey | null>(null);
   const [explained, setExplained] = useState(false);
 
   const speak = useCallback(
-    async (text: string, locale: LanguageCode): Promise<SpeakOutcome> => {
+    async (text: string, locale: LanguageCode, shared = false): Promise<SpeakOutcome> => {
       setNotice(null);
       const outcome = await controller.speak({
         text: text.slice(0, LIMITS.ttsChars),
+        ...(shared ? { shared: true } : {}),
         locale,
         bcp47: LANGUAGES[locale].bcp47,
         speed: prefs.speed,
+        prefer: speechPreference,
       });
       const message = SPEAK_MESSAGES[outcome];
       if (message) setNotice(message);
       return outcome;
     },
-    [controller, prefs.speed],
+    [controller, prefs.speed, speechPreference],
   );
 
   const listen = useCallback(

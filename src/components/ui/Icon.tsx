@@ -24,12 +24,18 @@ const PATHS = {
 
 export type IconName = keyof typeof PATHS;
 
-/** The Sakho AI mark: a speech bubble with a friendly face. Decorative. */
+/** The Sakho mark: a speech bubble with a friendly face. Decorative. */
 export function BrandMark({ size = 40 }: { size?: number }) {
   return (
     <svg aria-hidden="true" focusable="false" width={size} height={size} viewBox="0 0 64 64" className="shrink-0">
-      <rect width="64" height="64" rx="18" fill="var(--color-primary)" />
-      <path d="M16 20h32v20H30l-10 8v-8h-4z" fill="var(--color-surface)" />
+      <defs>
+        <linearGradient id="sakho-mark" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stopColor="var(--color-primary-bright)" />
+          <stop offset="1" stopColor="var(--color-rose)" />
+        </linearGradient>
+      </defs>
+      <rect width="64" height="64" rx="20" fill="url(#sakho-mark)" />
+      <path d="M16 20h32v20H30l-10 8v-8h-4z" fill="#fff" />
       <circle cx="26" cy="30" r="3" fill="var(--color-primary)" />
       <circle cx="38" cy="30" r="3" fill="var(--color-primary)" />
     </svg>
@@ -40,7 +46,7 @@ const BADGE_TONES = {
   primary: 'bg-primary-soft text-primary',
   accent: 'bg-accent-soft text-accent',
   danger: 'bg-danger text-white',
-  onDark: 'bg-white/15 text-white',
+  onDark: 'bg-white/20 text-white',
 } as const;
 
 /** Icon inside a soft rounded tile: gives a card a clear visual anchor. Decorative. */
@@ -76,7 +82,7 @@ export function Icon({ name, size = 28 }: { name: IconName; size?: number }) {
       strokeWidth="2"
       strokeLinecap="round"
       strokeLinejoin="round"
-      className="shrink-0"
+      className={`shrink-0 ${name === 'next' || name === 'back' ? 'rtl:-scale-x-100' : ''}`}
     >
       <path d={PATHS[name]} />
     </svg>

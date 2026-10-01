@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-# Sakho AI production image for Google Cloud Run.
+# Sakho production image for Google Cloud Run.
 # Node 24 is the active LTS line; the tag is pinned and updated by Dependabot.
 ARG NODE_IMAGE=node:24.21.0-bookworm-slim
 
@@ -20,7 +20,7 @@ RUN npm run build
 
 # ---- runtime: standalone server only, non-root ------------------------------
 FROM ${NODE_IMAGE} AS runtime
-LABEL org.opencontainers.image.title="Sakho AI" \
+LABEL org.opencontainers.image.title="Sakho" \
       org.opencontainers.image.description="Multilingual, voice-first assistant for rural women in India"
 WORKDIR /app
 ENV NODE_ENV=production \
