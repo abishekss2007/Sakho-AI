@@ -29,7 +29,7 @@ No login is needed. The guided flow works without the microphone, without AI, an
 | Hindi and Tamil interface | Implemented, **needs fluent review** | Complete, but written for this build and not yet checked by a fluent speaker. |
 | Ten other languages | **Preview** | Selectable; screens stay in English; the assistant is asked to reply in the language. |
 | Rate limiting and daily cost cap | Implemented | Shared across instances only when a Redis REST store is configured. |
-| Docker image and Cloud Run workflow | Implemented | Not deployed from this repository yet. See the final section of [Deployment](#deployment). |
+| Docker image and Cloud Run workflow | Implemented | Image builds and passes its smoke test in GitHub Actions. Not deployed yet; see [Deployment status](#deployment-status). |
 | Offline reload / installable app | **Not implemented** | There is no service worker. A page already open keeps working in a reduced way. |
 | Other schemes, accounts, saved history | Planned / out of scope | No database is used. |
 
@@ -846,7 +846,7 @@ Create an environment named **`production`** (Settings → Environments) with:
 
 No workflow uses `pull_request_target` or `workflow_run`. Fork pull requests run CI with a read-only token and no credentials. Every third-party action is pinned to a commit SHA that was resolved from the upstream repository on 2026-10-01, with the tag in a comment; Dependabot keeps them current.
 
-Limitations: dependency review and CodeQL need the dependency graph and code scanning, which are free on public repositories and need GitHub Advanced Security on private ones. The workflows themselves have been validated as YAML but **have not yet run on GitHub**.
+Limitations: dependency review and CodeQL need the dependency graph and code scanning, which are free on public repositories and need GitHub Advanced Security on private ones. On the first push (commit `e6312bb`, 2026-10-01) the CI jobs, the container build and smoke test, `npm audit` and CodeQL all ran and passed on GitHub. The deploy job was skipped because no Google Cloud variables are set, so **the deployment steps themselves have never run**. Dependency review only runs on pull requests and has not run yet.
 
 ## Operations
 
@@ -910,7 +910,7 @@ Never demo with `SOS_MODE=live` unless you intend the buttons to open a real dia
 - **Translations are unreviewed.** Hindi and Tamil text was written for this build and has not been checked by fluent speakers. Ten languages have no interface translation.
 - **AI quality is untested with real users and real models.** All automated tests use mocks. No live Gemini call was made while building this repository, and the default model name comes from documentation, not from a successful request.
 - **Speech support is unverified.** Recognition depends on the browser. Cloud voice availability per language was not confirmed. Nothing was tested on a physical phone.
-- **Not deployed.** The Cloud Run workflow has never run. The GitHub workflows have not yet executed on GitHub.
+- **Not deployed.** The Cloud Run deployment steps have never run; only the checks and the container smoke test have run on GitHub.
 - **Rate limits are per instance** unless the shared store is configured, and no limit here stops a distributed attacker without an edge layer such as Cloud Armor.
 - **No offline reload.** Without a service worker, reloading while offline fails. Only an already-open page degrades gracefully.
 - **Emergency numbers** were verified on official web pages on one date, not by calling them, and regional behaviour differs. Ambulance numbers 102/108 are omitted as unverified.
